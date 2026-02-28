@@ -161,8 +161,6 @@ pub(crate) fn m_vec_multiply_bins(bins: &mut [u64], out: &mut [u64], m_vec_limbs
     {
         let (left, right) = bins.split_at_mut(13 * m_vec_limbs);
         // m_vec_mul_add_x_inv(bins+13*mvl, bins+9*mvl)
-        // src = bins[13*mvl..14*mvl], dst = bins[9*mvl..10*mvl]
-        // But 13*mvl is in the right part after split_at_mut(13*mvl)... no wait
         // split_at_mut(13*mvl) -> left = [0..13*mvl], right = [13*mvl..]
         // src = right[0..mvl], dst = left[9*mvl..10*mvl]
         let mask_lsb: u64 = 0x1111111111111111;
