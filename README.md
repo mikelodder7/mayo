@@ -4,7 +4,7 @@
 [![Docs][docs-image]][docs-link]
 ![Apache2/MIT licensed][license-image]
 [![Downloads][downloads-image]][crate-link]
-![build](https://github.com/mikelodder7/sntrup761/actions/workflows/sntrup.yml/badge.svg)
+![build](https://github.com/mikelodder7/pq-mayo/actions/workflows/mayo.yml/badge.svg)
 ![MSRV][msrv-image]
 
 A Rust implementation of the [MAYO](https://pqmayo.org/) post-quantum signature scheme, submitted to the NIST PQC standardization process.
@@ -119,7 +119,7 @@ let restored: KeyPair<Mayo1> = serde_json::from_str(&json).expect("deserialize")
 
 ## Performance
 
-Benchmarked on Apple M3 Max (aarch64) with `-C target-cpu=native`:
+Benchmarked on Apple M1 (aarch64) with `-C target-cpu=native`:
 
 | Operation    | Time       |
 |-------------|-----------|
@@ -177,3 +177,13 @@ Unless you explicitly state otherwise, any contribution intentionally
 submitted for inclusion in the work by you, as defined in the Apache-2.0
 license, shall be dual licensed as above, without any additional terms or
 conditions.
+
+[//]: # (badges)
+
+[crate-image]: https://img.shields.io/crates/v/pq-mayo.svg
+[crate-link]: https://crates.io/crates/pq-mayo
+[docs-image]: https://docs.rs/pq-mayo/badge.svg
+[docs-link]: https://docs.rs/pq-mayo/
+[license-image]: https://img.shields.io/badge/license-Apache2.0/MIT-blue.svg
+[downloads-image]: https://img.shields.io/crates/d/pq-mayo.svg
+[msrv-image]: https://img.shields.io/badge/rustc-1.90+-blue.svg
