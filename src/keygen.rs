@@ -9,8 +9,8 @@ use crate::params::MayoParameter;
 use aes::Aes128;
 use ctr::cipher::{KeyIvInit, StreamCipher};
 use rand::CryptoRng;
-use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::Shake256;
+use sha3::digest::{ExtendableOutput, Update, XofReader};
 
 type Aes128Ctr32 = ctr::Ctr32BE<Aes128>;
 

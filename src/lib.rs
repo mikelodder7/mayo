@@ -108,38 +108,70 @@ mod tests {
     }
 
     #[test]
-    fn keypair_serde_mayo1() { keypair_serde::<Mayo1>(); }
+    fn keypair_serde_mayo1() {
+        keypair_serde::<Mayo1>();
+    }
     #[test]
-    fn keypair_serde_mayo2() { keypair_serde::<Mayo2>(); }
+    fn keypair_serde_mayo2() {
+        keypair_serde::<Mayo2>();
+    }
     #[test]
-    fn keypair_serde_mayo3() { keypair_serde::<Mayo3>(); }
+    fn keypair_serde_mayo3() {
+        keypair_serde::<Mayo3>();
+    }
     #[test]
-    fn keypair_serde_mayo5() { keypair_serde::<Mayo5>(); }
+    fn keypair_serde_mayo5() {
+        keypair_serde::<Mayo5>();
+    }
 
     #[test]
-    fn signing_key_serde_mayo1() { signing_key_serde::<Mayo1>(); }
+    fn signing_key_serde_mayo1() {
+        signing_key_serde::<Mayo1>();
+    }
     #[test]
-    fn signing_key_serde_mayo2() { signing_key_serde::<Mayo2>(); }
+    fn signing_key_serde_mayo2() {
+        signing_key_serde::<Mayo2>();
+    }
     #[test]
-    fn signing_key_serde_mayo3() { signing_key_serde::<Mayo3>(); }
+    fn signing_key_serde_mayo3() {
+        signing_key_serde::<Mayo3>();
+    }
     #[test]
-    fn signing_key_serde_mayo5() { signing_key_serde::<Mayo5>(); }
+    fn signing_key_serde_mayo5() {
+        signing_key_serde::<Mayo5>();
+    }
 
     #[test]
-    fn verifying_key_serde_mayo1() { verifying_key_serde::<Mayo1>(); }
+    fn verifying_key_serde_mayo1() {
+        verifying_key_serde::<Mayo1>();
+    }
     #[test]
-    fn verifying_key_serde_mayo2() { verifying_key_serde::<Mayo2>(); }
+    fn verifying_key_serde_mayo2() {
+        verifying_key_serde::<Mayo2>();
+    }
     #[test]
-    fn verifying_key_serde_mayo3() { verifying_key_serde::<Mayo3>(); }
+    fn verifying_key_serde_mayo3() {
+        verifying_key_serde::<Mayo3>();
+    }
     #[test]
-    fn verifying_key_serde_mayo5() { verifying_key_serde::<Mayo5>(); }
+    fn verifying_key_serde_mayo5() {
+        verifying_key_serde::<Mayo5>();
+    }
 
     #[test]
-    fn signature_serde_mayo1() { signature_serde::<Mayo1>(); }
+    fn signature_serde_mayo1() {
+        signature_serde::<Mayo1>();
+    }
     #[test]
-    fn signature_serde_mayo2() { signature_serde::<Mayo2>(); }
+    fn signature_serde_mayo2() {
+        signature_serde::<Mayo2>();
+    }
     #[test]
-    fn signature_serde_mayo3() { signature_serde::<Mayo3>(); }
+    fn signature_serde_mayo3() {
+        signature_serde::<Mayo3>();
+    }
     #[test]
-    fn signature_serde_mayo5() { signature_serde::<Mayo5>(); }
+    fn signature_serde_mayo5() {
+        signature_serde::<Mayo5>();
+    }
 }

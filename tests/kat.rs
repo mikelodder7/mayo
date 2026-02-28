@@ -1,8 +1,8 @@
 //! NIST KAT (Known Answer Test) vectors for MAYO signature scheme.
 
+use aes::Aes256;
 use aes::cipher::generic_array::GenericArray;
 use aes::cipher::{BlockEncrypt, KeyInit};
-use aes::Aes256;
 use core::convert::Infallible;
 use pq_mayo::{KeyPair, Mayo1, Mayo2, Mayo3, Mayo5, MayoParameter};
 use signature::Verifier;

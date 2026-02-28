@@ -30,10 +30,12 @@ fn wrong_message<P: pq_mayo::MayoParameter>() {
         .expect("signing failed");
 
     let wrong_msg = b"wrong message";
-    assert!(keypair
-        .verifying_key()
-        .verify(wrong_msg.as_slice(), &sig)
-        .is_err());
+    assert!(
+        keypair
+            .verifying_key()
+            .verify(wrong_msg.as_slice(), &sig)
+            .is_err()
+    );
 }
 
 #[test]

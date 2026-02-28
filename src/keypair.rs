@@ -99,8 +99,8 @@ pub(crate) fn derive_cpk_from_csk<P: MayoParameter>(csk: &[u8], cpk: &mut [u8]) 
     use crate::codec::{decode, pack_m_vecs};
     use crate::keygen::expand_p1_p2;
     use crate::matrix_ops::{compute_p3, m_upper};
-    use sha3::digest::{ExtendableOutput, Update, XofReader};
     use sha3::Shake256;
+    use sha3::digest::{ExtendableOutput, Update, XofReader};
 
     let m_vec_limbs = P::M_VEC_LIMBS;
     let param_m = P::M;

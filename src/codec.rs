@@ -45,23 +45,23 @@ pub(crate) fn unpack_m_vecs(input: &[u8], output: &mut [u64], vecs: usize, m: us
     let packed_size = m / 2;
     let limb_bytes = m_vec_limbs * 8;
 
+    // Pre-allocate buffers once, reuse across iterations
+    let mut tmp = vec![0u64; m_vec_limbs];
+    let mut tmp_bytes = vec![0u8; limb_bytes];
+
     // Work backwards to support potential in-place operation
     for i in (0..vecs).rev() {
-        let mut tmp = vec![0u64; m_vec_limbs];
-        let tmp_bytes =
-            &mut vec![0u8; limb_bytes];
+        tmp_bytes.fill(0);
 
         // Copy packed bytes into temp
-        tmp_bytes[..packed_size].copy_from_slice(&input[i * packed_size..i * packed_size + packed_size]);
+        tmp_bytes[..packed_size]
+            .copy_from_slice(&input[i * packed_size..i * packed_size + packed_size]);
 
         // Convert bytes to u64 limbs (little-endian)
-        for (j, tmp_val) in tmp.iter_mut().enumerate().take(m_vec_limbs) {
+        for (j, tmp_val) in tmp.iter_mut().enumerate() {
             let mut val: u64 = 0;
             for b in 0..8 {
-                let idx = j * 8 + b;
-                if idx < limb_bytes {
-                    val |= u64::from(tmp_bytes[idx]) << (b * 8);
-                }
+                val |= u64::from(tmp_bytes[j * 8 + b]) << (b * 8);
             }
             *tmp_val = val;
         }

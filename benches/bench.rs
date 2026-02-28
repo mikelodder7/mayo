@@ -2,7 +2,7 @@
 
 //! Criterion benchmarks for pq-mayo keygen, sign, and verify.
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use pq_mayo::{KeyPair, Mayo1, Mayo2, Mayo3, Mayo5, MayoParameter};
 use signature::{Signer, Verifier};
 

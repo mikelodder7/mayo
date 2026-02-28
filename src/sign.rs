@@ -7,16 +7,14 @@ use crate::error::Result;
 use crate::gf16::{mat_add, mat_mul, mul_f};
 use crate::keygen::expand_p1_p2;
 use crate::matrix_ops::{compute_m_and_vpv, p1p1t_times_o};
-use crate::params::{MayoParameter, F_TAIL_LEN};
+use crate::params::{F_TAIL_LEN, MayoParameter};
 use crate::sample::sample_solution;
 use rand::CryptoRng;
-use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::Shake256;
+use sha3::digest::{ExtendableOutput, Update, XofReader};
 
 /// Expand a compact secret key into P1, L (=(P1+P1^t)*O + P2), and O.
-fn expand_sk<P: MayoParameter>(
-    csk: &[u8],
-) -> (Vec<u64>, Vec<u8>) {
+fn expand_sk<P: MayoParameter>(csk: &[u8]) -> (Vec<u64>, Vec<u8>) {
     let param_o = P::O;
     let param_v = P::V;
     let param_o_bytes = P::O_BYTES;
@@ -94,7 +92,7 @@ fn transpose_16x16_nibbles(m: &mut [u64]) {
 }
 
 /// Compute the right-hand side: y = t XOR reduce(vPv).
-fn compute_rhs<P: MayoParameter>(vpv: &mut [u64], t: &[u8], y: &mut [u8]) {
+pub(crate) fn compute_rhs<P: MayoParameter>(vpv: &mut [u64], t: &[u8], y: &mut [u8]) {
     let m_vec_limbs = P::M_VEC_LIMBS;
     let param_m = P::M;
     let param_k = P::K;
@@ -369,7 +367,8 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
 
     // Compute salt = SHAKE256(digest || random || seed_sk)
     let mut salt = vec![0u8; param_salt_bytes];
-    tmp[param_digest_bytes + param_salt_bytes..param_digest_bytes + param_salt_bytes + param_sk_seed_bytes]
+    tmp[param_digest_bytes + param_salt_bytes
+        ..param_digest_bytes + param_salt_bytes + param_sk_seed_bytes]
         .copy_from_slice(seed_sk);
     {
         let mut hasher = Shake256::default();
@@ -396,11 +395,20 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
     let mut s = vec![0u8; param_k * param_n];
     let mut vdec = vec![0u8; param_v * param_k];
 
+    // Pre-allocate buffers reused across retry iterations
+    let m_vec_limbs = P::M_VEC_LIMBS;
+    let mut v_and_r = vec![0u8; param_k * param_v_bytes + param_r_bytes];
+    let mut mtmp = vec![0u64; param_k * param_o * m_vec_limbs];
+    let mut vpv = vec![0u64; param_k * param_k * m_vec_limbs];
+    let mut y = vec![0u8; param_m];
+    let a_row_size = param_m.div_ceil(8) * 8;
+    let mut a_matrix = vec![0u8; a_row_size * param_a_cols];
+    let mut r = vec![0u8; param_k * param_o + 1];
+
     for ctr in 0..=255u8 {
         tmp[ctrbyte_offset] = ctr;
 
         // Generate V and r
-        let mut v_and_r = vec![0u8; param_k * param_v_bytes + param_r_bytes];
         {
             let mut hasher = Shake256::default();
             hasher.update(&tmp[..ctrbyte_offset + 1]);
@@ -418,19 +426,16 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
         }
 
         // Compute M matrices and vPv
-        let m_vec_limbs = P::M_VEC_LIMBS;
-        let mut mtmp = vec![0u64; param_k * param_o * m_vec_limbs];
-        let mut vpv = vec![0u64; param_k * param_k * m_vec_limbs];
-
+        mtmp.fill(0);
+        vpv.fill(0);
         compute_m_and_vpv::<P>(&vdec, l, p1, &mut mtmp, &mut vpv);
 
         // Compute y = t XOR reduce(vPv)
-        let mut y = vec![0u8; param_m];
+        y.fill(0);
         compute_rhs::<P>(&mut vpv, &t, &mut y);
 
         // Compute the linearized system A
-        let a_row_size = param_m.div_ceil(8) * 8;
-        let mut a_matrix = vec![0u8; a_row_size * param_a_cols];
+        a_matrix.fill(0);
         compute_a::<P>(&mut mtmp, &mut a_matrix);
 
         // Clear last column
@@ -439,7 +444,7 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
         }
 
         // Decode r
-        let mut r = vec![0u8; param_k * param_o + 1];
+        r.fill(0);
         decode(
             &v_and_r[param_k * param_v_bytes..],
             &mut r,

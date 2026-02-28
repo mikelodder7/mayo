@@ -86,7 +86,11 @@ pub(crate) fn ef(a: &mut [u8], nrows: usize, ncols: usize) {
     // Pack the matrix A into nibble-sliced form
     let mut packed_a = vec![0u64; row_len * nrows];
     for i in 0..nrows {
-        ef_pack_m_vec_safe(&a[i * ncols..(i + 1) * ncols], &mut packed_a[i * row_len..(i + 1) * row_len], ncols);
+        ef_pack_m_vec_safe(
+            &a[i * ncols..(i + 1) * ncols],
+            &mut packed_a[i * row_len..(i + 1) * row_len],
+            ncols,
+        );
     }
 
     let mut pivot_row_packed = vec![0u64; row_len];
@@ -99,12 +103,8 @@ pub(crate) fn ef(a: &mut [u8], nrows: usize, ncols: usize) {
         let pivot_row_upper_bound = (nrows as i32 - 1).min(pivot_col as i32);
 
         // Zero out pivot row buffers
-        for v in pivot_row_packed.iter_mut() {
-            *v = 0;
-        }
-        for v in pivot_row2.iter_mut() {
-            *v = 0;
-        }
+        pivot_row_packed.fill(0);
+        pivot_row2.fill(0);
 
         // Try to get a pivot row in constant time
         let mut pivot: u8 = 0;
@@ -132,9 +132,9 @@ pub(crate) fn ef(a: &mut [u8], nrows: usize, ncols: usize) {
             let do_copy = !ct_compare_64(row, pivot_row) & !pivot_is_zero;
             let do_not_copy = !do_copy;
             for col in 0..row_len {
-                packed_a[row as usize * row_len + col] =
-                    (do_not_copy & packed_a[row as usize * row_len + col])
-                        .wrapping_add(do_copy & pivot_row2[col]);
+                packed_a[row as usize * row_len + col] = (do_not_copy
+                    & packed_a[row as usize * row_len + col])
+                    .wrapping_add(do_copy & pivot_row2[col]);
             }
         }
 
@@ -147,7 +147,7 @@ pub(crate) fn ef(a: &mut [u8], nrows: usize, ncols: usize) {
             );
             vec_mul_add_u64(
                 row_len,
-                &pivot_row2.clone(),
+                &pivot_row2,
                 below_pivot.wrapping_mul(elt_to_elim),
                 &mut packed_a[row as usize * row_len..(row as usize + 1) * row_len],
             );

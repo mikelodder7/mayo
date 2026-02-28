@@ -103,7 +103,14 @@ pub(crate) fn lincomb(a: &[u8], b: &[u8], n: usize, m: usize) -> u8 {
 }
 
 /// Matrix multiply: c = a * b, where a is row_a x colrow_ab and b is colrow_ab x col_b.
-pub(crate) fn mat_mul(a: &[u8], b: &[u8], c: &mut [u8], colrow_ab: usize, row_a: usize, col_b: usize) {
+pub(crate) fn mat_mul(
+    a: &[u8],
+    b: &[u8],
+    c: &mut [u8],
+    colrow_ab: usize,
+    row_a: usize,
+    col_b: usize,
+) {
     for i in 0..row_a {
         for j in 0..col_b {
             c[i * col_b + j] = lincomb(&a[i * colrow_ab..], &b[j..], colrow_ab, col_b);

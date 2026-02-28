@@ -31,18 +31,18 @@ Benchmarked on Apple M3 Max (aarch64) with `-C target-cpu=native`:
 
 | Operation    | Time       |
 |-------------|-----------|
-| Mayo1/keygen | 404.19 µs |
-| Mayo1/sign   | 887.96 µs |
-| Mayo1/verify | 324.92 µs |
-| Mayo2/keygen | 453.25 µs |
-| Mayo2/sign   | 629.77 µs |
-| Mayo2/verify | 201.88 µs |
-| Mayo3/keygen | 1.000 ms  |
-| Mayo3/sign   | 2.207 ms  |
-| Mayo3/verify | 676.01 µs |
-| Mayo5/keygen | 2.220 ms  |
-| Mayo5/sign   | 5.052 ms  |
-| Mayo5/verify | 1.218 ms  |
+| Mayo1/keygen | 269.19 µs |
+| Mayo1/sign   | 698.57 µs |
+| Mayo1/verify | 192.85 µs |
+| Mayo2/keygen | 331.42 µs |
+| Mayo2/sign   | 477.97 µs |
+| Mayo2/verify | 87.92 µs  |
+| Mayo3/keygen | 765.33 µs |
+| Mayo3/sign   | 1.899 ms  |
+| Mayo3/verify | 434.75 µs |
+| Mayo5/keygen | 1.713 ms  |
+| Mayo5/sign   | 4.406 ms  |
+| Mayo5/verify | 665.64 µs |
 
 Run your own benchmarks:
 

@@ -97,10 +97,7 @@ impl<P: MayoParameter> SigningKey<P> {
 }
 
 impl<P: MayoParameter> signature::Signer<Signature<P>> for SigningKey<P> {
-    fn try_sign(
-        &self,
-        msg: &[u8],
-    ) -> Result<Signature<P>, signature::Error> {
+    fn try_sign(&self, msg: &[u8]) -> Result<Signature<P>, signature::Error> {
         let mut sig_bytes = vec![0u8; P::SIG_BYTES];
         let mut rng = rand::rng();
         mayo_sign_signature::<P>(&mut sig_bytes, msg, &self.bytes, &mut rng)

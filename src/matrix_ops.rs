@@ -129,16 +129,12 @@ pub(crate) fn mul_add_mat_x_m_mat(
 
 /// Compute P1 * O (upper-triangular P1 times O matrix).
 pub(crate) fn p1_times_o<P: MayoParameter>(p1: &[u64], o: &[u8], acc: &mut [u64]) {
-    mul_add_m_upper_triangular_mat_x_mat(
-        P::M_VEC_LIMBS, p1, o, acc, P::V, P::V, P::O, true,
-    );
+    mul_add_m_upper_triangular_mat_x_mat(P::M_VEC_LIMBS, p1, o, acc, P::V, P::V, P::O, true);
 }
 
 /// Compute P1 * V^t (upper-triangular P1 times transpose of V).
 pub(crate) fn p1_times_vt<P: MayoParameter>(p1: &[u64], v: &[u8], acc: &mut [u64]) {
-    mul_add_m_upper_triangular_mat_x_mat_trans(
-        P::M_VEC_LIMBS, p1, v, acc, P::V, P::V, P::K, true,
-    );
+    mul_add_m_upper_triangular_mat_x_mat_trans(P::M_VEC_LIMBS, p1, v, acc, P::V, P::V, P::K, true);
 }
 
 /// Compute (P1 + P1^t) * O and add to acc (which already contains P2).
@@ -163,14 +159,16 @@ pub(crate) fn p1p1t_times_o<P: MayoParameter>(p1: &[u64], o: &[u8], acc: &mut [u
                 m_vec_mul_add(
                     &p1[src_offset..src_offset + m_vec_limbs],
                     o[c * param_o + k],
-                    &mut acc[m_vec_limbs * (r * param_o + k)..m_vec_limbs * (r * param_o + k) + m_vec_limbs],
+                    &mut acc[m_vec_limbs * (r * param_o + k)
+                        ..m_vec_limbs * (r * param_o + k) + m_vec_limbs],
                     m_vec_limbs,
                 );
                 // P1[r,c] * O[r,k] -> acc[c,k] (transpose contribution)
                 m_vec_mul_add(
                     &p1[src_offset..src_offset + m_vec_limbs],
                     o[r * param_o + k],
-                    &mut acc[m_vec_limbs * (c * param_o + k)..m_vec_limbs * (c * param_o + k) + m_vec_limbs],
+                    &mut acc[m_vec_limbs * (c * param_o + k)
+                        ..m_vec_limbs * (c * param_o + k) + m_vec_limbs],
                     m_vec_limbs,
                 );
             }
@@ -204,12 +202,7 @@ pub(crate) fn compute_m_and_vpv<P: MayoParameter>(
 /// Compute P3 = O^t * (P1*O + P2).
 ///
 /// Note: this modifies P2 in place (adds P1*O to it).
-pub(crate) fn compute_p3<P: MayoParameter>(
-    p1: &[u64],
-    p2: &mut [u64],
-    o: &[u8],
-    p3: &mut [u64],
-) {
+pub(crate) fn compute_p3<P: MayoParameter>(p1: &[u64], p2: &mut [u64], o: &[u8], p3: &mut [u64]) {
     let m_vec_limbs = P::M_VEC_LIMBS;
     let param_v = P::V;
     let param_o = P::O;
@@ -280,7 +273,8 @@ pub(crate) fn m_calculate_ps_sps<P: MayoParameter>(
 
         for j in 0..o {
             for col in 0..k {
-                let bin_idx = ((row * k + col) * 16 + usize::from(s[col * n + j + v])) * m_vec_limbs;
+                let bin_idx =
+                    ((row * k + col) * 16 + usize::from(s[col * n + j + v])) * m_vec_limbs;
                 m_vec_add(
                     &p2[(row * o + j) * m_vec_limbs..(row * o + j + 1) * m_vec_limbs],
                     &mut accumulator[bin_idx..bin_idx + m_vec_limbs],
