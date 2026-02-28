@@ -262,24 +262,24 @@ fn run_kat_tests<P: MayoParameter>(kat_content: &str, max_vectors: usize) {
 
 #[test]
 fn kat_mayo1() {
-    let content = include_str!("../../whodouthinkur/KAT/PQCsignKAT_24_MAYO_1.rsp");
+    let content = include_str!("KAT/PQCsignKAT_24_MAYO_1.rsp");
     run_kat_tests::<Mayo1>(content, 100);
 }
 
 #[test]
 fn kat_mayo2() {
-    let content = include_str!("../../whodouthinkur/KAT/PQCsignKAT_24_MAYO_2.rsp");
+    let content = include_str!("KAT/PQCsignKAT_24_MAYO_2.rsp");
     run_kat_tests::<Mayo2>(content, 100);
 }
 
 #[test]
 fn kat_mayo3() {
-    let content = include_str!("../../whodouthinkur/KAT/PQCsignKAT_32_MAYO_3.rsp");
+    let content = include_str!("KAT/PQCsignKAT_32_MAYO_3.rsp");
     run_kat_tests::<Mayo3>(content, 100);
 }
 
 #[test]
 fn kat_mayo5() {
-    let content = include_str!("../../whodouthinkur/KAT/PQCsignKAT_40_MAYO_5.rsp");
+    let content = include_str!("KAT/PQCsignKAT_40_MAYO_5.rsp");
     run_kat_tests::<Mayo5>(content, 100);
 }
