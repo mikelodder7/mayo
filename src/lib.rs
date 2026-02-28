@@ -213,11 +213,34 @@
 //!   crate to prevent secret material from lingering in memory.
 //! - The [`Debug`](core::fmt::Debug) implementation for [`SigningKey`] redacts
 //!   the key bytes, printing `**FILTERED**` instead.
+//!
+//! # PKCS#8 and SPKI Support
+//!
+//! Enable the `pkcs8` feature for DER-encoded key serialization compatible
+//! with X.509 and PKCS#8 standards. This implements the [`EncodePrivateKey`],
+//! [`DecodePrivateKey`], [`EncodePublicKey`], and [`DecodePublicKey`] traits
+//! from the [`pkcs8`](https://docs.rs/pkcs8) ecosystem.
+//!
+//! Since MAYO has not yet been standardized by NIST, experimental OIDs
+//! from the [Open Quantum Safe](https://openquantumsafe.org/) project are
+//! used. These will be replaced with official NIST OIDs upon standardization.
+//!
+//! ```toml
+//! [dependencies]
+//! pq-mayo = { version = "0.1", features = ["pkcs8"] }
+//! ```
+//!
+//! [`EncodePrivateKey`]: https://docs.rs/pkcs8/latest/pkcs8/trait.EncodePrivateKey.html
+//! [`DecodePrivateKey`]: https://docs.rs/pkcs8/latest/pkcs8/trait.DecodePrivateKey.html
+//! [`EncodePublicKey`]: https://docs.rs/spki/latest/spki/trait.EncodePublicKey.html
+//! [`DecodePublicKey`]: https://docs.rs/spki/latest/spki/trait.DecodePublicKey.html
 
 mod error;
 mod keypair;
 mod mayo_signature;
 mod params;
+#[cfg(feature = "pkcs8")]
+mod pkcs8;
 mod signing_key;
 mod verifying_key;
 
@@ -237,6 +260,9 @@ pub use mayo_signature::Signature;
 pub use params::{Mayo1, Mayo2, Mayo3, Mayo5, MayoParameter};
 pub use signing_key::SigningKey;
 pub use verifying_key::VerifyingKey;
+
+#[cfg(feature = "pkcs8")]
+pub use crate::pkcs8::{MAYO1_OID, MAYO2_OID, MAYO3_OID, MAYO5_OID};
 
 #[cfg(feature = "serde")]
 #[cfg(test)]

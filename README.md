@@ -18,6 +18,31 @@ A Rust implementation of the [MAYO](https://pqmayo.org/) post-quantum signature 
 | Mayo3        | 3              | 681 bytes      | 2986 bytes      |
 | Mayo5        | 5              | 964 bytes      | 5554 bytes      |
 
+## Performance
+
+Benchmarked on Apple M1 (aarch64) with `-C target-cpu=native`:
+
+| Operation    | Time       |
+|-------------|-----------|
+| Mayo1/keygen | 269.19 µs |
+| Mayo1/sign   | 698.57 µs |
+| Mayo1/verify | 192.85 µs |
+| Mayo2/keygen | 331.42 µs |
+| Mayo2/sign   | 477.97 µs |
+| Mayo2/verify | 87.92 µs  |
+| Mayo3/keygen | 765.33 µs |
+| Mayo3/sign   | 1.899 ms  |
+| Mayo3/verify | 434.75 µs |
+| Mayo5/keygen | 1.713 ms  |
+| Mayo5/sign   | 4.406 ms  |
+| Mayo5/verify | 665.64 µs |
+
+Run your own benchmarks:
+
+```sh
+cargo bench
+```
+
 ## Usage
 
 ### Basic Sign and Verify
@@ -117,42 +142,61 @@ let json = serde_json::to_string(&keypair).expect("serialize");
 let restored: KeyPair<Mayo1> = serde_json::from_str(&json).expect("deserialize");
 ```
 
-## Performance
+### PKCS#8 and SPKI Support
 
-Benchmarked on Apple M1 (aarch64) with `-C target-cpu=native`:
+Enable the `pkcs8` feature for DER-encoded key serialization compatible with X.509 and PKCS#8 standards:
 
-| Operation    | Time       |
-|-------------|-----------|
-| Mayo1/keygen | 269.19 µs |
-| Mayo1/sign   | 698.57 µs |
-| Mayo1/verify | 192.85 µs |
-| Mayo2/keygen | 331.42 µs |
-| Mayo2/sign   | 477.97 µs |
-| Mayo2/verify | 87.92 µs  |
-| Mayo3/keygen | 765.33 µs |
-| Mayo3/sign   | 1.899 ms  |
-| Mayo3/verify | 434.75 µs |
-| Mayo5/keygen | 1.713 ms  |
-| Mayo5/sign   | 4.406 ms  |
-| Mayo5/verify | 665.64 µs |
-
-Run your own benchmarks:
-
-```sh
-cargo bench
+```toml
+[dependencies]
+pq-mayo = { version = "0.1", features = ["pkcs8"] }
 ```
 
-## Building and Testing
+This implements the standard RustCrypto key encoding traits:
 
-```sh
-# Build
-cargo build --release
+- `EncodePrivateKey` / `DecodePrivateKey` for `KeyPair` (PKCS#8 DER)
+- `DecodePrivateKey` for `SigningKey` (PKCS#8 DER)
+- `EncodePublicKey` / `DecodePublicKey` for `VerifyingKey` (SPKI DER)
 
-# Run tests
-cargo test
+```rust,ignore
+use pq_mayo::{KeyPair, Mayo1, SigningKey, VerifyingKey};
+use pkcs8::DecodePrivateKey;
+use pkcs8::EncodePrivateKey;
+use pkcs8::spki::{DecodePublicKey, EncodePublicKey};
+use signature::{Signer, Verifier};
 
-# Clippy
-cargo clippy -- -D warnings
+let mut rng = rand::rng();
+let keypair = KeyPair::<Mayo1>::generate(&mut rng).expect("keygen");
+
+// Encode private key to PKCS#8 DER
+let sk_der = keypair.to_pkcs8_der().expect("encode");
+
+// Decode private key from PKCS#8 DER
+let restored = KeyPair::<Mayo1>::from_pkcs8_der(sk_der.as_bytes()).expect("decode");
+
+// Encode public key to SPKI DER
+let vk_der = keypair.verifying_key().to_public_key_der().expect("encode");
+
+// Decode public key from SPKI DER
+let restored_vk = VerifyingKey::<Mayo1>::from_public_key_der(vk_der.as_bytes()).expect("decode");
+
+// Sign and verify with round-tripped keys
+let sig = restored.signing_key().try_sign(b"hello").expect("sign");
+restored_vk.verify(b"hello", &sig).expect("verify");
+```
+
+Since MAYO has not yet been standardized by NIST, experimental OIDs from the
+[Open Quantum Safe](https://openquantumsafe.org/) project are used (`1.3.9999.8.{1,2,3,5}.3`).
+These will be replaced with official NIST OIDs upon standardization.
+
+### WebAssembly Support
+
+This crate compiles to `wasm32-unknown-unknown` using pure Rust implementations
+for all cryptographic primitives. Enable the `js` feature to use the browser's
+`crypto.getRandomValues` for randomness:
+
+```toml
+[dependencies]
+pq-mayo = { version = "0.1", features = ["js"] }
 ```
 
 ## Serialization

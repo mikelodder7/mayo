@@ -32,7 +32,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-      - run: cargo build --features serde
+      - run: cargo build --features pkcs8,serde --benches
 
   test:
     runs-on: ubuntu-latest
@@ -41,7 +41,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-      - run: cargo test --features serde --benches --release
+      - run: cargo test --features pkcs8,serde --benches --release
 
   careful:
     runs-on: ubuntu-latest
@@ -52,7 +52,7 @@ jobs:
           toolchain: nightly
       - uses: cargo-bins/cargo-binstall@main
       - run: cargo binstall --no-confirm cargo-careful
-      - run: cargo careful test tests --features serde --release
+      - run: cargo careful test tests --features pkcs8,serde --release
 
   clippy:
     runs-on: ubuntu-latest
@@ -62,7 +62,7 @@ jobs:
         with:
           toolchain: stable
           components: clippy
-      - run: cargo clippy --features serde -- -D warnings
+      - run: cargo clippy --features pkcs8,serde -- -D warnings
 
   fmt:
     runs-on: ubuntu-latest
@@ -81,7 +81,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-      - run: cargo doc --features serde
+      - run: cargo doc --features pkcs8,serde
 
   deps:
     runs-on: ubuntu-latest
@@ -92,7 +92,7 @@ jobs:
           toolchain: nightly
       - uses: cargo-bins/cargo-binstall@main
       - run: cargo binstall --no-confirm cargo-udeps
-      - run: cargo udeps --all-targets --features=serde
+      - run: cargo udeps --all-targets --features=pkcs8,serde
 
   outdated:
     runs-on: ubuntu-latest
