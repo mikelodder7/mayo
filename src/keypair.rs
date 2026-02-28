@@ -19,6 +19,16 @@ pub struct KeyPair<P: MayoParameter> {
     verifying_key: VerifyingKey<P>,
 }
 
+impl<P: MayoParameter> AsRef<VerifyingKey<P>> for KeyPair<P> {
+    fn as_ref(&self) -> &VerifyingKey<P> {
+        &self.verifying_key
+    }
+}
+
+impl<P: MayoParameter> signature::KeypairRef for KeyPair<P> {
+    type VerifyingKey = VerifyingKey<P>;
+}
+
 impl<P: MayoParameter> core::fmt::Debug for KeyPair<P> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("KeyPair")
@@ -79,6 +89,17 @@ impl<P: MayoParameter> KeyPair<P> {
 
         Ok(Self {
             signing_key: SigningKey::try_from(csk)?,
+            verifying_key: VerifyingKey::try_from(cpk)?,
+        })
+    }
+
+    /// Construct a keypair from a [`SigningKey`], deriving the corresponding [`VerifyingKey`].
+    pub fn from_signing_key(signing_key: SigningKey<P>) -> Result<Self> {
+        let csk = signing_key.as_ref();
+        let mut cpk = vec![0u8; P::CPK_BYTES];
+        derive_cpk_from_csk::<P>(csk, &mut cpk);
+        Ok(Self {
+            signing_key,
             verifying_key: VerifyingKey::try_from(cpk)?,
         })
     }

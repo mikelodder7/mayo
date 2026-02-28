@@ -35,12 +35,6 @@
 //! keypair.verifying_key().verify(msg, &sig).expect("verify");
 //! ```
 //!
-//! # Choosing a Parameter Set
-//!
-//! Select the parameter set that matches your target NIST security level.
-//! Higher security levels provide stronger guarantees but produce larger
-//! keys and signatures.
-//!
 //! ```
 //! use pq_mayo::{KeyPair, Mayo1, Mayo2, Mayo3, Mayo5};
 //! use signature::{Signer, Verifier};
@@ -220,12 +214,12 @@
 //! - The [`Debug`](core::fmt::Debug) implementation for [`SigningKey`] redacts
 //!   the key bytes, printing `**FILTERED**` instead.
 
-pub mod error;
-pub mod keypair;
-pub mod mayo_signature;
-pub mod params;
-pub mod signing_key;
-pub mod verifying_key;
+mod error;
+mod keypair;
+mod mayo_signature;
+mod params;
+mod signing_key;
+mod verifying_key;
 
 mod bitsliced;
 mod codec;
@@ -237,7 +231,7 @@ mod sample;
 mod sign;
 mod verify;
 
-pub use error::Error;
+pub use error::{Error, Result};
 pub use keypair::KeyPair;
 pub use mayo_signature::Signature;
 pub use params::{Mayo1, Mayo2, Mayo3, Mayo5, MayoParameter};
