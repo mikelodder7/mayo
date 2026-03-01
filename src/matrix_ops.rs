@@ -218,7 +218,7 @@ pub(crate) fn compute_p3<P: MayoParameter>(p1: &[u64], p2: &mut [u64], o: &[u8],
 ///
 /// For an `size x size` matrix, produce the upper-triangular representation
 /// with `size*(size+1)/2` entries, where diagonal entries are kept and
-/// off-diagonal entries are summed: upper[r,c] = mat[r,c] + mat[c,r].
+/// off-diagonal entries are summed: upper\[r,c\] = mat\[r,c\] + mat\[c,r\].
 pub(crate) fn m_upper(m_vec_limbs: usize, input: &[u64], output: &mut [u64], size: usize) {
     let mut m_vecs_stored = 0;
     for r in 0..size {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Scalar GF(16) arithmetic over GF(2)[x]/(x^4 + x + 1).
+//! Scalar GF(16) arithmetic over GF(2)\[x\]/(x^4 + x + 1).
 
 /// Multiply two GF(16) elements: a * b mod (x^4 + x + 1).
 #[inline]
@@ -92,7 +92,7 @@ pub(crate) fn gf16v_mul_u64(a: u64, b: u8) -> u64 {
     r64
 }
 
-/// Linear combination: sum of a[i] * b[i*m] for i in 0..n.
+/// Linear combination: sum of a\[i\] * b\[i*m\] for i in 0..n.
 #[inline]
 pub(crate) fn lincomb(a: &[u8], b: &[u8], n: usize, m: usize) -> u8 {
     let mut ret: u8 = 0;

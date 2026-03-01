@@ -2,13 +2,14 @@
 authors = ["Michael Lodder <redmike7@gmail.com>"]
 categories = ["algorithms", "cryptography"]
 description = "MAYO post-quantum signature scheme"
-documentation = "https://github.com/mikelodder7/pq-mayo"
+documentation = "https://docs.rs/pq-mayo"
 edition = "2024"
 keywords = ["cryptography", "post-quantum", "signatures"]
 license = "Apache-2.0 OR MIT"
 name = "pq-mayo"
+exclude = ["tests/KAT"]
 repository = "https://github.com/mikelodder7/mayo"
-version = "0.1.0"
+version = "0.1.1"
 
 [features]
 default = []
@@ -63,6 +64,10 @@ checked_conversions = "warn"
 mod_module_files = "warn"
 panic = "warn"
 panic_in_result_fn = "warn"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [[bench]]
 name = "bench"

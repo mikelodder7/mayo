@@ -3,7 +3,7 @@
 //! PKCS#8 and SPKI encoding/decoding support for MAYO keys.
 //!
 //! This module implements the standard key encoding traits from the
-//! [`pkcs8`] and [`spki`](::pkcs8::spki) crates, enabling DER-encoded
+//! [`pkcs8`] and [`spki`] crates, enabling DER-encoded
 //! key serialization compatible with X.509 and PKCS#8.
 //!
 //! Since MAYO has not yet been standardized by NIST, this module uses
