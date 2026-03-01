@@ -4,7 +4,7 @@
 [![Docs][docs-image]][docs-link]
 ![Apache2/MIT licensed][license-image]
 [![Downloads][downloads-image]][crate-link]
-![build](https://github.com/mikelodder7/pq-mayo/actions/workflows/mayo.yml/badge.svg)
+![build](https://github.com/mikelodder7/mayo/actions/workflows/mayo.yml/badge.svg)
 ![MSRV][msrv-image]
 
 A Rust implementation of the [MAYO](https://pqmayo.org/) post-quantum signature scheme, submitted to the NIST PQC standardization process.
