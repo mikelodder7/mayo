@@ -3,19 +3,33 @@
 //! MAYO signing key.
 
 use crate::error::Error;
+use crate::keypair::derive_cpk_from_csk;
 use crate::mayo_signature::Signature;
 use crate::params::MayoParameter;
 use crate::sign::mayo_sign_signature;
-use core::marker::PhantomData;
+use hybrid_array::Array;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// A MAYO signing key (compact secret key = seed).
-#[derive(Clone, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone)]
 pub struct SigningKey<P: MayoParameter> {
-    bytes: Vec<u8>,
-    #[zeroize(skip)]
-    _marker: PhantomData<P>,
+    pub(crate) bytes: Array<u8, P::CskSize>,
+    pub(crate) cpk: Vec<u8>,
 }
+
+impl<P: MayoParameter> Zeroize for SigningKey<P> {
+    fn zeroize(&mut self) {
+        self.bytes.zeroize();
+    }
+}
+
+impl<P: MayoParameter> Drop for SigningKey<P> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl<P: MayoParameter> ZeroizeOnDrop for SigningKey<P> {}
 
 impl<P: MayoParameter> AsRef<[u8]> for SigningKey<P> {
     fn as_ref(&self) -> &[u8] {
@@ -27,16 +41,14 @@ impl<P: MayoParameter> TryFrom<&[u8]> for SigningKey<P> {
     type Error = Error;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        if bytes.len() != P::CSK_BYTES {
-            return Err(Error::InvalidKeyLength {
+        let csk =
+            Array::<u8, P::CskSize>::try_from(bytes).map_err(|_e| Error::InvalidKeyLength {
                 expected: P::CSK_BYTES,
                 got: bytes.len(),
-            });
-        }
-        Ok(Self {
-            bytes: bytes.to_vec(),
-            _marker: PhantomData,
-        })
+            })?;
+        let mut cpk = vec![0u8; P::CPK_BYTES];
+        derive_cpk_from_csk::<P>(bytes, &mut cpk);
+        Ok(Self { bytes: csk, cpk })
     }
 }
 
@@ -91,7 +103,7 @@ impl<P: MayoParameter> SigningKey<P> {
         msg: &[u8],
     ) -> crate::error::Result<Signature<P>> {
         let mut sig_bytes = vec![0u8; P::SIG_BYTES];
-        mayo_sign_signature::<P>(&mut sig_bytes, msg, &self.bytes, rng)?;
+        mayo_sign_signature::<P>(&mut sig_bytes, msg, &self.bytes, &self.cpk, rng)?;
         Signature::try_from(sig_bytes)
     }
 }
@@ -100,7 +112,7 @@ impl<P: MayoParameter> signature::Signer<Signature<P>> for SigningKey<P> {
     fn try_sign(&self, msg: &[u8]) -> Result<Signature<P>, signature::Error> {
         let mut sig_bytes = vec![0u8; P::SIG_BYTES];
         let mut rng = rand::rng();
-        mayo_sign_signature::<P>(&mut sig_bytes, msg, &self.bytes, &mut rng)
+        mayo_sign_signature::<P>(&mut sig_bytes, msg, &self.bytes, &self.cpk, &mut rng)
             .map_err(|e| -> signature::Error { e.into() })?;
         Signature::try_from(sig_bytes).map_err(|e| -> signature::Error { e.into() })
     }

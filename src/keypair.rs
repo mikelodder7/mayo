@@ -8,6 +8,7 @@ use crate::params::MayoParameter;
 use crate::signing_key::SigningKey;
 use crate::verifying_key::VerifyingKey;
 use rand::CryptoRng;
+use std::marker::PhantomData;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// A MAYO keypair containing both signing and verifying keys.
@@ -59,11 +60,17 @@ impl<P: MayoParameter> KeyPair<P> {
     /// Generate a new random keypair.
     pub fn generate(rng: &mut impl CryptoRng) -> Result<Self> {
         let mut cpk = vec![0u8; P::CPK_BYTES];
-        let mut csk = vec![0u8; P::CSK_BYTES];
+        let mut csk = hybrid_array::Array::<u8, P::CskSize>::default();
         mayo_keypair_compact::<P>(&mut cpk, &mut csk, rng)?;
         Ok(Self {
-            signing_key: SigningKey::try_from(csk)?,
-            verifying_key: VerifyingKey::try_from(cpk)?,
+            signing_key: SigningKey {
+                bytes: csk,
+                cpk: cpk.clone(),
+            },
+            verifying_key: VerifyingKey {
+                bytes: cpk,
+                _marker: PhantomData,
+            },
         })
     }
 
@@ -79,28 +86,33 @@ impl<P: MayoParameter> KeyPair<P> {
             });
         }
 
-        // Use the seed directly as the secret key, then derive the public key
-        let mut csk = vec![0u8; P::CSK_BYTES];
+        let mut csk = hybrid_array::Array::<u8, P::CskSize>::default();
         csk[..P::SK_SEED_BYTES].copy_from_slice(seed);
 
         let mut cpk = vec![0u8; P::CPK_BYTES];
-        // We need to derive cpk from seed - use the keygen logic
         derive_cpk_from_csk::<P>(&csk, &mut cpk);
 
         Ok(Self {
-            signing_key: SigningKey::try_from(csk)?,
-            verifying_key: VerifyingKey::try_from(cpk)?,
+            signing_key: SigningKey {
+                bytes: csk,
+                cpk: cpk.clone(),
+            },
+            verifying_key: VerifyingKey {
+                bytes: cpk,
+                _marker: PhantomData,
+            },
         })
     }
 
     /// Construct a keypair from a [`SigningKey`], deriving the corresponding [`VerifyingKey`].
     pub fn from_signing_key(signing_key: SigningKey<P>) -> Result<Self> {
-        let csk = signing_key.as_ref();
-        let mut cpk = vec![0u8; P::CPK_BYTES];
-        derive_cpk_from_csk::<P>(csk, &mut cpk);
+        let verifying_key = VerifyingKey {
+            bytes: signing_key.cpk.clone(),
+            _marker: PhantomData,
+        };
         Ok(Self {
             signing_key,
-            verifying_key: VerifyingKey::try_from(cpk)?,
+            verifying_key,
         })
     }
 

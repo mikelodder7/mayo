@@ -211,6 +211,10 @@ This crate has been tested against the following `serde` compatible formats:
 - [x] serde_yaml
 - [x] toml
 
+## Mitigations
+
+There is a known fault injection attack against MAYO described in [MAYO Key Recovery by Fixing Vinegar Seeds](https://csrc.nist.gov/csrc/media/Projects/threshold-cryptography/documents/TCall-1/Vinaigrette-PW01.pdf). This code contains mitigations to these attacks.
+
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT License](LICENSE-MIT) at your option.

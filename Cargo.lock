@@ -477,6 +477,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
+name = "hybrid-array"
+version = "0.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1b229d73f5803b562cc26e4da0396c8610a4ee209f4fac8fa4f8d709166dc45"
+dependencies = [
+ "typenum",
+ "zeroize",
+]
+
+[[package]]
 name = "id-arena"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -654,13 +664,14 @@ dependencies = [
 
 [[package]]
 name = "pq-mayo"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "aes",
  "criterion",
  "ctr",
  "getrandom 0.4.1",
  "hex",
+ "hybrid-array",
  "pkcs8",
  "postcard",
  "rand",
@@ -669,6 +680,7 @@ dependencies = [
  "serdect",
  "sha3",
  "signature",
+ "subtle",
  "thiserror",
  "zeroize",
 ]
@@ -920,6 +932,12 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+
+[[package]]
+name = "subtle"
+version = "2.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "syn"

@@ -3,12 +3,13 @@
 //! MAYO signature generation.
 
 use crate::codec::{decode, encode};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::gf16::{mat_add, mat_mul, mul_f};
 use crate::keygen::expand_p1_p2;
 use crate::matrix_ops::{compute_m_and_vpv, p1p1t_times_o};
-use crate::params::{F_TAIL_LEN, MayoParameter};
+use crate::params::{F_TAIL_LEN, MAX_M_VEC_LIMBS, MayoParameter};
 use crate::sample::sample_solution;
+use crate::verify::mayo_verify;
 use rand::CryptoRng;
 use sha3::Shake256;
 use sha3::digest::{ExtendableOutput, Update, XofReader};
@@ -110,7 +111,7 @@ pub(crate) fn compute_rhs<P: MayoParameter>(vpv: &mut [u64], t: &[u8], y: &mut [
         }
     }
 
-    let mut temp = vec![0u64; m_vec_limbs];
+    let mut temp = [0u64; MAX_M_VEC_LIMBS];
 
     for i in (0..param_k).rev() {
         for j in i..param_k {
@@ -329,6 +330,7 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
     sig: &mut [u8],
     msg: &[u8],
     csk: &[u8],
+    cpk: &[u8],
     rng: &mut impl CryptoRng,
 ) -> Result<usize> {
     let param_m = P::M;
@@ -354,7 +356,7 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
     let l = &p[P::P1_LIMBS..];
 
     // Hash message
-    let mut tmp = vec![0u8; param_digest_bytes + param_salt_bytes + param_sk_seed_bytes + 1];
+    let mut tmp = vec![0u8; param_digest_bytes + param_salt_bytes];
     {
         let mut hasher = Shake256::default();
         hasher.update(msg);
@@ -366,13 +368,14 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
     rng.fill_bytes(&mut tmp[param_digest_bytes..param_digest_bytes + param_salt_bytes]);
 
     // Compute salt = SHAKE256(digest || random || seed_sk)
+    // Absorb seed_sk directly from its source instead of copying into a shared
+    // buffer, preventing fault attacks that skip the copy (Section 9.2,
+    // "MAYO Key Recovery by Fixing Vinegar Seeds", Jendral & Dubrova 2024).
     let mut salt = vec![0u8; param_salt_bytes];
-    tmp[param_digest_bytes + param_salt_bytes
-        ..param_digest_bytes + param_salt_bytes + param_sk_seed_bytes]
-        .copy_from_slice(seed_sk);
     {
         let mut hasher = Shake256::default();
-        hasher.update(&tmp[..param_digest_bytes + param_salt_bytes + param_sk_seed_bytes]);
+        hasher.update(&tmp[..param_digest_bytes + param_salt_bytes]);
+        hasher.update(seed_sk);
         let mut reader = hasher.finalize_xof();
         reader.read(&mut salt);
     }
@@ -389,8 +392,6 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
     }
     decode(&tenc, &mut t, param_m);
 
-    let ctrbyte_offset = param_digest_bytes + param_salt_bytes + param_sk_seed_bytes;
-
     let mut x = vec![0u8; param_k * param_n];
     let mut s = vec![0u8; param_k * param_n];
     let mut vdec = vec![0u8; param_v * param_k];
@@ -406,12 +407,14 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
     let mut r = vec![0u8; param_k * param_o + 1];
 
     for ctr in 0..=255u8 {
-        tmp[ctrbyte_offset] = ctr;
-
-        // Generate V and r
+        // Generate V and r using incremental hashing.
+        // Absorb seed_sk directly from its source to prevent fault attacks
+        // on SHAKE256 (Sections 6.1-6.3, Jendral & Dubrova 2024).
         {
             let mut hasher = Shake256::default();
-            hasher.update(&tmp[..ctrbyte_offset + 1]);
+            hasher.update(&tmp[..param_digest_bytes + param_salt_bytes]);
+            hasher.update(seed_sk);
+            hasher.update(&[ctr]);
             let mut reader = hasher.finalize_xof();
             reader.read(&mut v_and_r);
         }
@@ -466,10 +469,11 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
     }
 
     // Compute s[i] = v[i] + O*x[i]
+    let mut ox = vec![0u8; param_v];
     for i in 0..param_k {
         let vi = &vdec[i * param_v..(i + 1) * param_v];
         let xi = &x[i * param_o..(i + 1) * param_o];
-        let mut ox = vec![0u8; param_v];
+        ox.fill(0);
         mat_mul(&o_mat, xi, &mut ox, param_o, param_v, 1);
         mat_add(vi, &ox, &mut s[i * param_n..], param_v, 1);
         s[i * param_n + param_v..i * param_n + param_n]
@@ -478,6 +482,16 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
 
     encode(&s, sig, param_n * param_k);
     sig[param_sig_bytes - param_salt_bytes..param_sig_bytes].copy_from_slice(&salt);
+
+    // Fault attack countermeasure: verify signature before releasing.
+    // If a fault corrupted the vinegar seed computation, the signature
+    // will be invalid and this check prevents its release.
+    // Mitigates all three attacks in Jendral & Dubrova 2024.
+    {
+        if mayo_verify::<P>(msg, sig, cpk).is_err() {
+            return Err(Error::Signing);
+        }
+    }
 
     Ok(param_sig_bytes)
 }

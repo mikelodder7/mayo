@@ -6,10 +6,11 @@ use crate::codec::{decode, unpack_m_vecs};
 use crate::error::{Error, Result};
 use crate::keygen::expand_p1_p2;
 use crate::matrix_ops::m_calculate_ps_sps;
-use crate::params::MayoParameter;
+use crate::params::{MAX_M, MayoParameter};
 use crate::sign::compute_rhs;
 use sha3::Shake256;
 use sha3::digest::{ExtendableOutput, Update, XofReader};
+use subtle::ConstantTimeEq;
 
 /// Evaluate the public map: compute SPS from s and P1, P2, P3.
 fn eval_public_map<P: MayoParameter>(
@@ -25,7 +26,7 @@ fn eval_public_map<P: MayoParameter>(
     let mut sps = vec![0u64; param_k * param_k * m_vec_limbs];
     m_calculate_ps_sps::<P>(p1, p2, p3, s, &mut sps);
 
-    let zero = vec![0u8; P::M];
+    let zero = [0u8; MAX_M];
     compute_rhs::<P>(&mut sps, &zero, eval);
 }
 
@@ -85,7 +86,7 @@ pub(crate) fn mayo_verify<P: MayoParameter>(msg: &[u8], sig: &[u8], cpk: &[u8]) 
     eval_public_map::<P>(&s, p1, p2, &p3, &mut y);
 
     // Constant-time compare y == t
-    if y[..param_m] == t[..param_m] {
+    if bool::from(y[..param_m].ct_eq(&t[..param_m])) {
         Ok(())
     } else {
         Err(Error::VerificationFailed)

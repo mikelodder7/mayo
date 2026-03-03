@@ -9,7 +9,7 @@ license = "Apache-2.0 OR MIT"
 name = "pq-mayo"
 exclude = ["tests/KAT"]
 repository = "https://github.com/mikelodder7/mayo"
-version = "0.1.2"
+version = "0.2.0"
 
 [features]
 default = []
@@ -22,11 +22,13 @@ aes = "0.8"
 ctr = "0.9"
 getrandom = { version = "0.4", optional = true }
 hex = "0.4"
+hybrid-array = { version = "0.4", features = ["zeroize"] }
 rand = "0.10"
 serde = { version = "1", features = ["derive"], optional = true }
 serdect = { version = "0.4", optional = true }
 pkcs8 = { version = "0.11.0-rc.10", default-features = false, features = ["alloc"], optional = true }
 signature = { version = "2", features = ["std"] }
+subtle = "2"
 thiserror = "2"
 zeroize = { version = "1", features = ["derive"] }
 

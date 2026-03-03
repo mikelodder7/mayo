@@ -5,11 +5,21 @@
 //! Defines the [`MayoParameter`] trait and concrete parameter sets
 //! [`Mayo1`], [`Mayo2`], [`Mayo3`], and [`Mayo5`].
 
+use hybrid_array::ArraySize;
+
 /// Length of the f(X) tail polynomial coefficients.
 pub(crate) const F_TAIL_LEN: usize = 4;
 
+/// Maximum M_VEC_LIMBS across all parameter sets (Mayo5 = 9).
+pub(crate) const MAX_M_VEC_LIMBS: usize = 9;
+
+/// Maximum M across all parameter sets (Mayo5 = 142).
+pub(crate) const MAX_M: usize = 142;
+
 /// Trait defining all constants for a MAYO parameter set.
 pub trait MayoParameter: Clone + Copy + Send + Sync + 'static {
+    /// Typenum type for the compact secret key byte length.
+    type CskSize: ArraySize;
     /// Human-readable name of this parameter set.
     const NAME: &'static str;
     /// Total number of variables (n).
@@ -71,7 +81,8 @@ macro_rules! define_mayo_parameter {
         m_vec_limbs = $mvl:expr,
         m_bytes = $mb:expr, O_bytes = $ob:expr, v_bytes = $vb:expr, r_bytes = $rb:expr,
         P1_bytes = $p1b:expr, P2_bytes = $p2b:expr, P3_bytes = $p3b:expr,
-        csk_bytes = $cskb:expr, cpk_bytes = $cpkb:expr, sig_bytes = $sigb:expr,
+        csk_bytes = $cskb:expr, csk_type = $cskt:ty,
+        cpk_bytes = $cpkb:expr, sig_bytes = $sigb:expr,
         salt_bytes = $saltb:expr, digest_bytes = $db:expr,
         pk_seed_bytes = $pksb:expr, sk_seed_bytes = $sksb:expr,
         f_tail = $ft:expr
@@ -81,6 +92,7 @@ macro_rules! define_mayo_parameter {
         pub struct $name;
 
         impl MayoParameter for $name {
+            type CskSize = $cskt;
             const NAME: &'static str = $display;
             const N: usize = $n;
             const M: usize = $m;
@@ -127,6 +139,7 @@ define_mayo_parameter!(
     P2_bytes = 24336,
     P3_bytes = 1404,
     csk_bytes = 24,
+    csk_type = hybrid_array::typenum::U24,
     cpk_bytes = 1420,
     sig_bytes = 454,
     salt_bytes = 24,
@@ -152,6 +165,7 @@ define_mayo_parameter!(
     P2_bytes = 34816,
     P3_bytes = 4896,
     csk_bytes = 24,
+    csk_type = hybrid_array::typenum::U24,
     cpk_bytes = 4912,
     sig_bytes = 186,
     salt_bytes = 24,
@@ -177,6 +191,7 @@ define_mayo_parameter!(
     P2_bytes = 58320,
     P3_bytes = 2970,
     csk_bytes = 32,
+    csk_type = hybrid_array::typenum::U32,
     cpk_bytes = 2986,
     sig_bytes = 681,
     salt_bytes = 32,
@@ -202,6 +217,7 @@ define_mayo_parameter!(
     P2_bytes = 120984,
     P3_bytes = 5538,
     csk_bytes = 40,
+    csk_type = hybrid_array::typenum::U40,
     cpk_bytes = 5554,
     sig_bytes = 964,
     salt_bytes = 40,

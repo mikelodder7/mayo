@@ -3,7 +3,6 @@
 //! MAYO verifying (public) key.
 
 use crate::error::Error;
-use crate::keypair::derive_cpk_from_csk;
 use crate::mayo_signature::Signature;
 use crate::params::MayoParameter;
 use crate::signing_key::SigningKey;
@@ -13,8 +12,8 @@ use core::marker::PhantomData;
 /// A MAYO verifying key (compact public key).
 #[derive(Clone)]
 pub struct VerifyingKey<P: MayoParameter> {
-    bytes: Vec<u8>,
-    _marker: PhantomData<P>,
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) _marker: PhantomData<P>,
 }
 
 impl<P: MayoParameter> AsRef<[u8]> for VerifyingKey<P> {
@@ -44,7 +43,16 @@ impl<P: MayoParameter> TryFrom<Vec<u8>> for VerifyingKey<P> {
     type Error = Error;
 
     fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
-        Self::try_from(bytes.as_slice())
+        if bytes.len() != P::CPK_BYTES {
+            return Err(Error::InvalidKeyLength {
+                expected: P::CPK_BYTES,
+                got: bytes.len(),
+            });
+        }
+        Ok(Self {
+            bytes,
+            _marker: PhantomData,
+        })
     }
 }
 
@@ -60,7 +68,16 @@ impl<P: MayoParameter> TryFrom<Box<[u8]>> for VerifyingKey<P> {
     type Error = Error;
 
     fn try_from(bytes: Box<[u8]>) -> Result<Self, Self::Error> {
-        Self::try_from(bytes.as_ref())
+        if bytes.len() != P::CPK_BYTES {
+            return Err(Error::InvalidKeyLength {
+                expected: P::CPK_BYTES,
+                got: bytes.len(),
+            });
+        }
+        Ok(Self {
+            bytes: bytes.into_vec(),
+            _marker: PhantomData,
+        })
     }
 }
 
@@ -83,10 +100,8 @@ impl<P: MayoParameter> core::fmt::Debug for VerifyingKey<P> {
 
 impl<P: MayoParameter> From<&SigningKey<P>> for VerifyingKey<P> {
     fn from(sk: &SigningKey<P>) -> Self {
-        let mut cpk = vec![0u8; P::CPK_BYTES];
-        derive_cpk_from_csk::<P>(sk.as_ref(), &mut cpk);
         Self {
-            bytes: cpk,
+            bytes: sk.cpk.clone(),
             _marker: PhantomData,
         }
     }
