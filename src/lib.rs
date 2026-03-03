@@ -10,12 +10,12 @@
 //!
 //! # Supported Parameter Sets
 //!
-//! | Type | Security Level | Signature Size | Public Key Size |
-//! |---------|----------------|----------------|-----------------|
-//! | [`Mayo1`] | 1 | 454 bytes | 1,420 bytes |
-//! | [`Mayo2`] | 2 | 186 bytes | 4,912 bytes |
-//! | [`Mayo3`] | 3 | 681 bytes | 2,986 bytes |
-//! | [`Mayo5`] | 5 | 964 bytes | 5,554 bytes |
+//! | Type | Security Level | Signature Size | Public Key Size | Private Key Size |
+//! |------|----------------|----------------|-----------------|------------------|
+//! | [`Mayo1`] | 1 | 454 B | 1,420 B | 24 B |
+//! | [`Mayo2`] | 1 | 186 B | 4,912 B | 24 B |
+//! | [`Mayo3`] | 3 | 681 B | 2,986 B | 32 B |
+//! | [`Mayo5`] | 5 | 964 B | 5,554 B | 40 B |
 //!
 //! All parameter sets implement the [`MayoParameter`] trait and can be used
 //! interchangeably as the generic parameter on [`KeyPair`], [`SigningKey`],
