@@ -11,12 +11,12 @@ A Rust implementation of the [MAYO](https://pqmayo.org/) post-quantum signature 
 
 ## Supported Parameter Sets
 
-| Parameter Set | Security Level | Signature Size | Public Key Size |
-|--------------|----------------|----------------|-----------------|
-| Mayo1        | 1              | 454 bytes      | 1420 bytes      |
-| Mayo2        | 2              | 186 bytes      | 4912 bytes      |
-| Mayo3        | 3              | 681 bytes      | 2986 bytes      |
-| Mayo5        | 5              | 964 bytes      | 5554 bytes      |
+| Parameter Set | Security Level | Signature Size | Public Key Size | Private Key Size |
+|--------------|----------------|----------------|-----------------|-------------------|
+| Mayo1        | 1              | 454 B      | 1420 B      | 24 B |
+| Mayo2        | 1              | 186 B      | 4912 B      | 24 B |
+| Mayo3        | 3              | 681 B      | 2986 B      | 32 B |
+| Mayo5        | 5              | 964 B      | 5554 B      | 40 B |
 
 ## Performance
 
