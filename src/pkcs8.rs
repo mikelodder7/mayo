@@ -148,16 +148,17 @@ where
             .assert_algorithm_oid(P::ALGORITHM_IDENTIFIER.oid)?;
 
         if private_key_info.algorithm.parameters.is_some() {
-            return Err(::pkcs8::Error::KeyMalformed);
+            return Err(::pkcs8::Error::ParametersMalformed);
         }
 
         let mut reader = der::SliceReader::new(private_key_info.private_key.as_bytes())?;
         let seed_string = SeedString::decode_implicit(&mut reader, SEED_TAG_NUMBER)?
-            .ok_or(::pkcs8::Error::KeyMalformed)?;
+            .ok_or(::pkcs8::Error::KeyMalformed(::pkcs8::KeyError::Invalid))?;
         let seed = seed_string.value.as_bytes();
         reader.finish()?;
 
-        KeyPair::from_seed(seed).map_err(|_| ::pkcs8::Error::KeyMalformed)
+        KeyPair::from_seed(seed)
+            .map_err(|_| ::pkcs8::Error::KeyMalformed(::pkcs8::KeyError::Invalid))
     }
 }
 
@@ -211,15 +212,15 @@ where
             .assert_algorithm_oid(P::ALGORITHM_IDENTIFIER.oid)?;
 
         if spki.algorithm.parameters.is_some() {
-            return Err(::pkcs8::Error::KeyMalformed.into());
+            return Err(spki::Error::KeyMalformed);
         }
 
         let pk_bytes = spki
             .subject_public_key
             .as_bytes()
-            .ok_or(::pkcs8::Error::KeyMalformed)?;
+            .ok_or(spki::Error::KeyMalformed)?;
 
-        VerifyingKey::try_from(pk_bytes).map_err(|_| ::pkcs8::Error::KeyMalformed.into())
+        VerifyingKey::try_from(pk_bytes).map_err(|_| spki::Error::KeyMalformed)
     }
 }
 

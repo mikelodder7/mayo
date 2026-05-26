@@ -1,8 +1,7 @@
 //! NIST KAT (Known Answer Test) vectors for MAYO signature scheme.
 
 use aes::Aes256;
-use aes::cipher::generic_array::GenericArray;
-use aes::cipher::{BlockEncrypt, KeyInit};
+use aes::cipher::{Array, BlockCipherEncrypt, KeyInit};
 use core::convert::Infallible;
 use pq_mayo::{KeyPair, Mayo1, Mayo2, Mayo3, Mayo5, MayoParameter};
 use signature::Verifier;
@@ -27,12 +26,12 @@ impl NistDrbg {
     }
 
     fn update(&mut self, provided_data: Option<&[u8; 48]>) {
-        let cipher = Aes256::new(GenericArray::from_slice(&self.key));
+        let cipher = Aes256::new_from_slice(&self.key).expect("AES-256 key is 32 bytes");
         let mut temp = [0u8; 48];
 
         for i in 0..3 {
             self.increment_v();
-            let mut block = GenericArray::clone_from_slice(&self.v);
+            let mut block = Array::from(self.v);
             cipher.encrypt_block(&mut block);
             temp[16 * i..16 * (i + 1)].copy_from_slice(&block);
         }
@@ -59,11 +58,11 @@ impl NistDrbg {
     }
 
     fn generate(&mut self, output: &mut [u8]) {
-        let cipher = Aes256::new(GenericArray::from_slice(&self.key));
+        let cipher = Aes256::new_from_slice(&self.key).expect("AES-256 key is 32 bytes");
         let mut i = 0;
         while i < output.len() {
             self.increment_v();
-            let mut block = GenericArray::clone_from_slice(&self.v);
+            let mut block = Array::from(self.v);
             cipher.encrypt_block(&mut block);
             let end = (i + 16).min(output.len());
             output[i..end].copy_from_slice(&block[..end - i]);

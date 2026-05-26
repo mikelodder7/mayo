@@ -8,8 +8,8 @@ use crate::keygen::expand_p1_p2;
 use crate::matrix_ops::m_calculate_ps_sps;
 use crate::params::{MAX_M, MayoParameter};
 use crate::sign::compute_rhs;
-use sha3::Shake256;
-use sha3::digest::{ExtendableOutput, Update, XofReader};
+use shake::Shake256;
+use shake::digest::{ExtendableOutput, Update, XofReader};
 use subtle::ConstantTimeEq;
 
 /// Evaluate the public map: compute SPS from s and P1, P2, P3.

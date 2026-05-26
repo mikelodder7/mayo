@@ -9,8 +9,8 @@ use crate::params::MayoParameter;
 use aes::Aes128;
 use ctr::cipher::{KeyIvInit, StreamCipher};
 use rand::CryptoRng;
-use sha3::Shake256;
-use sha3::digest::{ExtendableOutput, Update, XofReader};
+use shake::Shake256;
+use shake::digest::{ExtendableOutput, Update, XofReader};
 use zeroize::Zeroizing;
 
 type Aes128Ctr32 = ctr::Ctr32BE<Aes128>;
@@ -24,7 +24,11 @@ pub(crate) fn expand_p1_p2<P: MayoParameter>(seed_pk: &[u8]) -> Vec<u64> {
 
     let mut result = vec![0u64; total_limbs];
     let iv = [0u8; 16];
-    let mut cipher = Aes128Ctr32::new(seed_pk[..16].into(), &iv.into());
+    // cipher 0.5 / hybrid-array: `new` wants `&Array` key/iv; `new_from_slices`
+    // takes plain byte slices. Both inputs are exactly 16 bytes (PK seed + IV),
+    // so the length check never fails.
+    let mut cipher = Aes128Ctr32::new_from_slices(&seed_pk[..16], &iv)
+        .expect("AES-128-CTR key and IV are both 16 bytes");
 
     // Stack buffer sized for the largest packed_size across all parameter sets (Mayo5: 71 bytes).
     // Streaming one vector at a time avoids the ~840 KB heap allocation for Mayo5.

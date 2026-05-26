@@ -12,8 +12,8 @@ use crate::params::{F_TAIL_LEN, MAX_M_VEC_LIMBS, MayoParameter};
 use crate::sample::sample_solution;
 use crate::verify::mayo_verify;
 use rand::CryptoRng;
-use sha3::Shake256;
-use sha3::digest::{ExtendableOutput, Update, XofReader};
+use shake::Shake256;
+use shake::digest::{ExtendableOutput, Update, XofReader};
 use zeroize::Zeroizing;
 
 /// Expand a compact secret key into P1, L (=(P1+P1^t)*O + P2), and O.

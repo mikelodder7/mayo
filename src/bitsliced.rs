@@ -2,7 +2,12 @@
 
 //! Bitsliced GF(16) vector operations on nibble-packed `u64` limbs.
 
-use crate::gf16::{mul_f, mul_table};
+use crate::gf16::mul_table;
+// `mul_f` only builds the SIMD shuffle LUTs, which exist solely on x86/aarch64.
+// Importing it unconditionally is an unused-import error on other targets
+// (e.g. wasm32) under `-D warnings`.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
+use crate::gf16::mul_f;
 
 /// LSB of each nibble: isolates bit 0 of every 4-bit element.
 const MASK_LSB: u64 = 0x1111111111111111;
@@ -284,6 +289,11 @@ unsafe fn m_vec_mul_add_neon(src: &[u64], a: u8, acc: &mut [u64], legs: usize) {
 /// asymmetry applies to the aarch64 NEON path, so the same gate is used there,
 /// but the exact crossover should be re-validated on aarch64 hardware (run the
 /// `timing_mul_add` test on an ARM box).
+///
+/// Only defined on architectures whose dispatcher consults it; the scalar-only
+/// fallback (e.g. wasm32) never references it, where an unconditional definition
+/// would be a dead-code error under `-D warnings`.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
 const SIMD_MIN_LIMBS: usize = 256;
 
 #[cfg(target_arch = "aarch64")]
