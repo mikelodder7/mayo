@@ -268,8 +268,15 @@ fn kat_mayo1() {
 
 #[test]
 fn kat_mayo2() {
-    let content = include_str!("KAT/PQCsignKAT_24_MAYO_2.rsp");
-    run_kat_tests::<Mayo2>(content, 100);
+    // The bundled MAYO2 KAT vectors target the Round 2 parameters
+    // (n=81, o=17). MAYO2 now uses the proposed Round 3 tweak
+    // (n=96, o=16), so those vectors are no longer applicable.
+    assert_eq!(Mayo2::N, 96);
+    assert_eq!(Mayo2::M, 64);
+    assert_eq!(Mayo2::O, 16);
+    assert_eq!(Mayo2::K, 4);
+    assert_eq!(Mayo2::CPK_BYTES, 4368);
+    assert_eq!(Mayo2::SIG_BYTES, 216);
 }
 
 #[test]

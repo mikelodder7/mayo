@@ -44,17 +44,16 @@ pub(crate) fn sample_solution(
     // Row echelon form
     ef(a, m, a_cols);
 
-    // Check if last row of A (excluding the last entry) is zero
+    // Compute rank indicator before back-substitution; the result is saved and
+    // returned only after the unconditional back-substitution completes, so no
+    // secret-dependent branch is visible before that work finishes.
     let mut full_rank: u8 = 0;
     for i in 0..(a_cols - 1) {
         full_rank |= a[(m - 1) * a_cols + i];
     }
 
-    if full_rank == 0 {
-        return false;
-    }
-
-    // Back substitution in constant time
+    // Back substitution — runs unconditionally regardless of rank to prevent
+    // timing leaks; caller retries when we return false.
     for row in (0..m).rev() {
         let mut finished: u8 = 0;
         let col_upper_bound = (row + 32 / (m - row)).min(ko);
@@ -86,5 +85,5 @@ pub(crate) fn sample_solution(
         }
     }
 
-    true
+    full_rank != 0
 }

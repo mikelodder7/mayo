@@ -178,12 +178,15 @@ pub(crate) fn p1p1t_times_o<P: MayoParameter>(p1: &[u64], o: &[u8], acc: &mut [u
 }
 
 /// Compute M matrices (V^t * L) and v^t * P1 * v (VPV).
+///
+/// `pv` is a caller-provided scratch buffer of length `V * K * M_VEC_LIMBS`.
 pub(crate) fn compute_m_and_vpv<P: MayoParameter>(
     vdec: &[u8],
     l: &[u64],
     p1: &[u64],
     vl: &mut [u64],
     vp1v: &mut [u64],
+    pv: &mut [u64],
 ) {
     let m_vec_limbs = P::M_VEC_LIMBS;
     let param_k = P::K;
@@ -194,9 +197,9 @@ pub(crate) fn compute_m_and_vpv<P: MayoParameter>(
     mul_add_mat_x_m_mat(m_vec_limbs, vdec, l, vl, param_k, param_v, param_o);
 
     // VP1V = V * P1 * V^t
-    let mut pv = vec![0u64; param_v * param_k * m_vec_limbs];
-    p1_times_vt::<P>(p1, vdec, &mut pv);
-    mul_add_mat_x_m_mat(m_vec_limbs, vdec, &pv, vp1v, param_k, param_v, param_k);
+    pv.fill(0);
+    p1_times_vt::<P>(p1, vdec, pv);
+    mul_add_mat_x_m_mat(m_vec_limbs, vdec, pv, vp1v, param_k, param_v, param_k);
 }
 
 /// Compute P3 = O^t * (P1*O + P2).

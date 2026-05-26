@@ -103,7 +103,7 @@ impl<P: MayoParameter> SigningKey<P> {
         msg: &[u8],
     ) -> crate::error::Result<Signature<P>> {
         let mut sig_bytes = vec![0u8; P::SIG_BYTES];
-        mayo_sign_signature::<P>(&mut sig_bytes, msg, &self.bytes, &self.cpk, rng)?;
+        mayo_sign_signature::<P>(&mut sig_bytes, msg, &self.bytes, rng)?;
         Signature::try_from(sig_bytes)
     }
 }
@@ -112,7 +112,7 @@ impl<P: MayoParameter> signature::Signer<Signature<P>> for SigningKey<P> {
     fn try_sign(&self, msg: &[u8]) -> Result<Signature<P>, signature::Error> {
         let mut sig_bytes = vec![0u8; P::SIG_BYTES];
         let mut rng = rand::rng();
-        mayo_sign_signature::<P>(&mut sig_bytes, msg, &self.bytes, &self.cpk, &mut rng)
+        mayo_sign_signature::<P>(&mut sig_bytes, msg, &self.bytes, &mut rng)
             .map_err(|e| -> signature::Error { e.into() })?;
         Signature::try_from(sig_bytes).map_err(|e| -> signature::Error { e.into() })
     }

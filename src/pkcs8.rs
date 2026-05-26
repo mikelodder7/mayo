@@ -147,6 +147,10 @@ where
             .algorithm
             .assert_algorithm_oid(P::ALGORITHM_IDENTIFIER.oid)?;
 
+        if private_key_info.algorithm.parameters.is_some() {
+            return Err(::pkcs8::Error::KeyMalformed);
+        }
+
         let mut reader = der::SliceReader::new(private_key_info.private_key.as_bytes())?;
         let seed_string = SeedString::decode_implicit(&mut reader, SEED_TAG_NUMBER)?
             .ok_or(::pkcs8::Error::KeyMalformed)?;
@@ -205,6 +209,10 @@ where
     fn try_from(spki: SubjectPublicKeyInfoRef<'_>) -> spki::Result<Self> {
         spki.algorithm
             .assert_algorithm_oid(P::ALGORITHM_IDENTIFIER.oid)?;
+
+        if spki.algorithm.parameters.is_some() {
+            return Err(::pkcs8::Error::KeyMalformed.into());
+        }
 
         let pk_bytes = spki
             .subject_public_key

@@ -65,33 +65,6 @@ pub(crate) fn mul_table(b: u8) -> u32 {
     x ^ (high_half >> 4) ^ (high_half >> 3)
 }
 
-/// Multiply 16 packed GF(16) nibbles in a u64 by a scalar.
-#[inline]
-#[allow(dead_code)]
-pub(crate) fn gf16v_mul_u64(a: u64, b: u8) -> u64 {
-    let mask_msb: u64 = 0x8888888888888888;
-    let mut a64 = a;
-    let b64 = u64::from(b);
-    let mut r64 = a64.wrapping_mul(b64 & 1);
-
-    let a_msb = a64 & mask_msb;
-    a64 ^= a_msb;
-    a64 = (a64 << 1) ^ ((a_msb >> 3).wrapping_mul(3));
-    r64 ^= a64.wrapping_mul((b64 >> 1) & 1);
-
-    let a_msb = a64 & mask_msb;
-    a64 ^= a_msb;
-    a64 = (a64 << 1) ^ ((a_msb >> 3).wrapping_mul(3));
-    r64 ^= a64.wrapping_mul((b64 >> 2) & 1);
-
-    let a_msb = a64 & mask_msb;
-    a64 ^= a_msb;
-    a64 = (a64 << 1) ^ ((a_msb >> 3).wrapping_mul(3));
-    r64 ^= a64.wrapping_mul((b64 >> 3) & 1);
-
-    r64
-}
-
 /// Linear combination: sum of a\[i\] * b\[i*m\] for i in 0..n.
 #[inline]
 pub(crate) fn lincomb(a: &[u8], b: &[u8], n: usize, m: usize) -> u8 {

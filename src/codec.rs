@@ -43,30 +43,16 @@ pub(crate) fn encode(input: &[u8], output: &mut [u8], len: usize) {
 pub(crate) fn unpack_m_vecs(input: &[u8], output: &mut [u64], vecs: usize, m: usize) {
     let m_vec_limbs = m.div_ceil(16);
     let packed_size = m / 2;
-    let limb_bytes = m_vec_limbs * 8;
 
-    // Pre-allocate buffers once, reuse across iterations
-    let mut tmp = vec![0u64; m_vec_limbs];
-    let mut tmp_bytes = vec![0u8; limb_bytes];
-
-    // Work backwards to support potential in-place operation
-    for i in (0..vecs).rev() {
-        tmp_bytes.fill(0);
-
-        // Copy packed bytes into temp
-        tmp_bytes[..packed_size]
-            .copy_from_slice(&input[i * packed_size..i * packed_size + packed_size]);
-
-        // Convert bytes to u64 limbs (little-endian)
-        for (j, tmp_val) in tmp.iter_mut().enumerate() {
-            let mut val: u64 = 0;
-            for b in 0..8 {
-                val |= u64::from(tmp_bytes[j * 8 + b]) << (b * 8);
-            }
-            *tmp_val = val;
+    for i in 0..vecs {
+        let src = &input[i * packed_size..(i + 1) * packed_size];
+        let dst = &mut output[i * m_vec_limbs..(i + 1) * m_vec_limbs];
+        dst.fill(0);
+        for (j, chunk) in src.chunks(8).enumerate() {
+            let mut buf = [0u8; 8];
+            buf[..chunk.len()].copy_from_slice(chunk);
+            dst[j] = u64::from_le_bytes(buf);
         }
-
-        output[i * m_vec_limbs..(i + 1) * m_vec_limbs].copy_from_slice(&tmp);
     }
 }
 

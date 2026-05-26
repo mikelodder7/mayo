@@ -134,6 +134,7 @@ pub(crate) fn derive_cpk_from_csk<P: MayoParameter>(csk: &[u8], cpk: &mut [u8]) 
     use crate::matrix_ops::{compute_p3, m_upper};
     use sha3::Shake256;
     use sha3::digest::{ExtendableOutput, Update, XofReader};
+    use zeroize::Zeroizing;
 
     let m_vec_limbs = P::M_VEC_LIMBS;
     let param_m = P::M;
@@ -147,34 +148,34 @@ pub(crate) fn derive_cpk_from_csk<P: MayoParameter>(csk: &[u8], cpk: &mut [u8]) 
     let seed_sk = &csk[..param_sk_seed_bytes];
 
     // S = SHAKE256(seed_sk) -> pk_seed || O_bytes
-    let mut s = vec![0u8; param_pk_seed_bytes + param_o_bytes];
+    let mut s = Zeroizing::new(vec![0u8; param_pk_seed_bytes + param_o_bytes]);
     let mut hasher = Shake256::default();
     hasher.update(seed_sk);
     let mut reader = hasher.finalize_xof();
     reader.read(&mut s);
 
-    let seed_pk = &s[..param_pk_seed_bytes];
+    let seed_pk = s[..param_pk_seed_bytes].to_vec();
 
     // Decode O
-    let mut o = vec![0u8; param_v * param_o];
+    let mut o = Zeroizing::new(vec![0u8; param_v * param_o]);
     decode(&s[param_pk_seed_bytes..], &mut o, param_v * param_o);
 
     // Expand P1, P2
-    let mut p = expand_p1_p2::<P>(seed_pk);
+    let mut p = Zeroizing::new(expand_p1_p2::<P>(&seed_pk));
     let p1_limbs = P::P1_LIMBS;
 
     // Compute P3
-    let mut p3 = vec![0u64; param_o * param_o * m_vec_limbs];
+    let mut p3 = Zeroizing::new(vec![0u64; param_o * param_o * m_vec_limbs]);
     {
         let (p1, p2) = p.split_at_mut(p1_limbs);
         compute_p3::<P>(p1, p2, &o, &mut p3);
     }
 
     // Store seed_pk
-    cpk[..param_pk_seed_bytes].copy_from_slice(seed_pk);
+    cpk[..param_pk_seed_bytes].copy_from_slice(&seed_pk);
 
     // Upper(P3) -> pack into cpk
-    let mut p3_upper = vec![0u64; param_p3_limbs];
+    let mut p3_upper = Zeroizing::new(vec![0u64; param_p3_limbs]);
     m_upper(m_vec_limbs, &p3, &mut p3_upper, param_o);
     pack_m_vecs(
         &p3_upper,

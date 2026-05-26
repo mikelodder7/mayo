@@ -82,7 +82,7 @@ pub(crate) fn mayo_verify<P: MayoParameter>(msg: &[u8], sig: &[u8], cpk: &[u8]) 
     decode(sig, &mut s, param_k * param_n);
 
     // Evaluate public map
-    let mut y = vec![0u8; 2 * param_m]; // Extra space
+    let mut y = vec![0u8; param_m];
     eval_public_map::<P>(&s, p1, p2, &p3, &mut y);
 
     // Constant-time compare y == t

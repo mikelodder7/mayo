@@ -9,12 +9,17 @@
 
 A Rust implementation of the [MAYO](https://pqmayo.org/) post-quantum signature scheme, submitted to the NIST PQC standardization process.
 
+Includes the latest updates as suggested for [Round 3](https://nvlpubs.nist.gov/nistpubs/ir/2026/NIST.IR.8610.pdf) and 
+[MAYO team NIST update with the MAYO2 tweak](https://csrc.nist.rip/csrc/media/presentations/2025/mayo/mayo-beullens_1.4_.pdf).
+
+NOTE: MAYO-2 signature size increased from 186 B to 216 B as a result of the Round 2 findings.
+
 ## Supported Parameter Sets
 
 | Parameter Set | Security Level | Signature Size | Public Key Size | Private Key Size |
 |--------------|----------------|----------------|-----------------|-------------------|
 | Mayo1        | 1              | 454 B      | 1420 B      | 24 B |
-| Mayo2        | 1              | 186 B      | 4912 B      | 24 B |
+| Mayo2        | 1              | 216 B      | 4368 B      | 24 B |
 | Mayo3        | 3              | 681 B      | 2986 B      | 32 B |
 | Mayo5        | 5              | 964 B      | 5554 B      | 40 B |
 
@@ -67,7 +72,7 @@ use signature::{Signer, Verifier};
 
 let mut rng = rand::rng();
 
-// NIST security level 2
+// NIST security level 1, tweaked after the wedge attack analysis
 let kp2 = KeyPair::<Mayo2>::generate(&mut rng).expect("keygen");
 let sig2 = kp2.signing_key().try_sign(b"message").expect("sign");
 kp2.verifying_key().verify(b"message", &sig2).expect("verify");

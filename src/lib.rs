@@ -13,7 +13,7 @@
 //! | Type | Security Level | Signature Size | Public Key Size | Private Key Size |
 //! |------|----------------|----------------|-----------------|------------------|
 //! | [`Mayo1`] | 1 | 454 B | 1,420 B | 24 B |
-//! | [`Mayo2`] | 1 | 186 B | 4,912 B | 24 B |
+//! | [`Mayo2`] | 1 | 216 B | 4,368 B | 24 B |
 //! | [`Mayo3`] | 3 | 681 B | 2,986 B | 32 B |
 //! | [`Mayo5`] | 5 | 964 B | 5,554 B | 40 B |
 //!
@@ -41,10 +41,10 @@
 //!
 //! let mut rng = rand::rng();
 //!
-//! // NIST security level 1 — smallest signatures
+//! // NIST security level 1 -- smallest signatures
 //! let kp1 = KeyPair::<Mayo1>::generate(&mut rng).expect("keygen");
 //!
-//! // NIST security level 2 — smallest signatures overall (186 bytes)
+//! // NIST security level 1 -- tweaked after the wedge attack analysis
 //! let kp2 = KeyPair::<Mayo2>::generate(&mut rng).expect("keygen");
 //! let sig = kp2.signing_key().try_sign(b"message").expect("sign");
 //! kp2.verifying_key().verify(b"message", &sig).expect("verify");
