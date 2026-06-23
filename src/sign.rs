@@ -33,14 +33,12 @@ fn expand_sk<P: MayoParameter>(csk: &[u8]) -> (Zeroizing<Vec<u64>>, Zeroizing<Ve
     let mut reader = hasher.finalize_xof();
     reader.read(&mut s);
 
-    let seed_pk = s[..param_pk_seed_bytes].to_vec();
-
     // Decode O
     let mut o = Zeroizing::new(vec![0u8; param_v * param_o]);
     decode(&s[param_pk_seed_bytes..], &mut o, param_v * param_o);
 
     // Expand P1 and P2; wrap in Zeroizing because L encodes secret O
-    let mut p = Zeroizing::new(expand_p1_p2::<P>(&seed_pk));
+    let mut p = Zeroizing::new(expand_p1_p2::<P>(&s[..param_pk_seed_bytes]));
 
     // Compute L = (P1 + P1^t)*O + P2
     // L replaces P2 in memory

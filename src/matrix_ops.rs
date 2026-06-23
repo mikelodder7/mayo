@@ -24,13 +24,15 @@ pub(crate) fn mul_add_m_upper_triangular_mat_x_mat(
     let mut bs_mat_entries_used = 0;
     for r in 0..bs_mat_rows {
         let c_start = if triangular { r } else { 0 };
+        let row_acc_offset = m_vec_limbs * r * mat_cols;
         for c in c_start..bs_mat_cols {
-            for k in 0..mat_cols {
-                let src_offset = m_vec_limbs * bs_mat_entries_used;
-                let dst_offset = m_vec_limbs * (r * mat_cols + k);
-                let scalar = mat[c * mat_cols + k];
+            let src_offset = m_vec_limbs * bs_mat_entries_used;
+            let src = &bs_mat[src_offset..src_offset + m_vec_limbs];
+            let mat_row = &mat[c * mat_cols..(c + 1) * mat_cols];
+            for (k, &scalar) in mat_row.iter().enumerate() {
+                let dst_offset = row_acc_offset + m_vec_limbs * k;
                 m_vec_mul_add(
-                    &bs_mat[src_offset..src_offset + m_vec_limbs],
+                    src,
                     scalar,
                     &mut acc[dst_offset..dst_offset + m_vec_limbs],
                     m_vec_limbs,
@@ -56,14 +58,15 @@ pub(crate) fn mul_add_m_upper_triangular_mat_x_mat_trans(
     let mut bs_mat_entries_used = 0;
     for r in 0..bs_mat_rows {
         let c_start = if triangular { r } else { 0 };
+        let row_acc_offset = m_vec_limbs * r * mat_rows;
         for c in c_start..bs_mat_cols {
+            let src_offset = m_vec_limbs * bs_mat_entries_used;
+            let src = &bs_mat[src_offset..src_offset + m_vec_limbs];
             for k in 0..mat_rows {
-                let src_offset = m_vec_limbs * bs_mat_entries_used;
-                let dst_offset = m_vec_limbs * (r * mat_rows + k);
-                let scalar = mat[k * bs_mat_cols + c];
+                let dst_offset = row_acc_offset + m_vec_limbs * k;
                 m_vec_mul_add(
-                    &bs_mat[src_offset..src_offset + m_vec_limbs],
-                    scalar,
+                    src,
+                    mat[k * bs_mat_cols + c],
                     &mut acc[dst_offset..dst_offset + m_vec_limbs],
                     m_vec_limbs,
                 );
@@ -85,10 +88,12 @@ pub(crate) fn mul_add_mat_trans_x_m_mat(
 ) {
     for r in 0..mat_cols {
         for c in 0..mat_rows {
+            let scalar = mat[c * mat_cols + r];
+            let src_row_offset = m_vec_limbs * c * bs_mat_cols;
+            let dst_row_offset = m_vec_limbs * r * bs_mat_cols;
             for k in 0..bs_mat_cols {
-                let src_offset = m_vec_limbs * (c * bs_mat_cols + k);
-                let dst_offset = m_vec_limbs * (r * bs_mat_cols + k);
-                let scalar = mat[c * mat_cols + r];
+                let src_offset = src_row_offset + m_vec_limbs * k;
+                let dst_offset = dst_row_offset + m_vec_limbs * k;
                 m_vec_mul_add(
                     &bs_mat[src_offset..src_offset + m_vec_limbs],
                     scalar,
@@ -111,11 +116,13 @@ pub(crate) fn mul_add_mat_x_m_mat(
     bs_mat_cols: usize,
 ) {
     for r in 0..mat_rows {
+        let dst_row_offset = m_vec_limbs * r * bs_mat_cols;
         for c in 0..mat_cols {
+            let scalar = mat[r * mat_cols + c];
+            let src_row_offset = m_vec_limbs * c * bs_mat_cols;
             for k in 0..bs_mat_cols {
-                let src_offset = m_vec_limbs * (c * bs_mat_cols + k);
-                let dst_offset = m_vec_limbs * (r * bs_mat_cols + k);
-                let scalar = mat[r * mat_cols + c];
+                let src_offset = src_row_offset + m_vec_limbs * k;
+                let dst_offset = dst_row_offset + m_vec_limbs * k;
                 m_vec_mul_add(
                     &bs_mat[src_offset..src_offset + m_vec_limbs],
                     scalar,
@@ -149,26 +156,31 @@ pub(crate) fn p1p1t_times_o<P: MayoParameter>(p1: &[u64], o: &[u8], acc: &mut [u
     let mut bs_mat_entries_used = 0;
     for r in 0..param_v {
         for c in r..param_v {
+            let src_offset = m_vec_limbs * bs_mat_entries_used;
             if c == r {
                 bs_mat_entries_used += 1;
                 continue;
             }
+            let src = &p1[src_offset..src_offset + m_vec_limbs];
+            let acc_r_offset = m_vec_limbs * r * param_o;
+            let acc_c_offset = m_vec_limbs * c * param_o;
+            let o_c_offset = c * param_o;
+            let o_r_offset = r * param_o;
             for k in 0..param_o {
-                let src_offset = m_vec_limbs * bs_mat_entries_used;
+                let dst_r = acc_r_offset + m_vec_limbs * k;
                 // P1[r,c] * O[c,k] -> acc[r,k]
                 m_vec_mul_add(
-                    &p1[src_offset..src_offset + m_vec_limbs],
-                    o[c * param_o + k],
-                    &mut acc[m_vec_limbs * (r * param_o + k)
-                        ..m_vec_limbs * (r * param_o + k) + m_vec_limbs],
+                    src,
+                    o[o_c_offset + k],
+                    &mut acc[dst_r..dst_r + m_vec_limbs],
                     m_vec_limbs,
                 );
+                let dst_c = acc_c_offset + m_vec_limbs * k;
                 // P1[r,c] * O[r,k] -> acc[c,k] (transpose contribution)
                 m_vec_mul_add(
-                    &p1[src_offset..src_offset + m_vec_limbs],
-                    o[r * param_o + k],
-                    &mut acc[m_vec_limbs * (c * param_o + k)
-                        ..m_vec_limbs * (c * param_o + k) + m_vec_limbs],
+                    src,
+                    o[o_r_offset + k],
+                    &mut acc[dst_c..dst_c + m_vec_limbs],
                     m_vec_limbs,
                 );
             }

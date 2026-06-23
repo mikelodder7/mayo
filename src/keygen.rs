@@ -78,14 +78,14 @@ pub(crate) fn mayo_keypair_compact<P: MayoParameter>(
     let mut reader = hasher.finalize_xof();
     reader.read(&mut s);
 
-    let seed_pk = s[..param_pk_seed_bytes].to_vec();
+    let seed_pk = &s[..param_pk_seed_bytes];
 
     // Decode O matrix
     let mut o = Zeroizing::new(vec![0u8; param_v * param_o]);
     decode(&s[param_pk_seed_bytes..], &mut o, param_v * param_o);
 
     // Expand P1 and P2
-    let mut p = Zeroizing::new(expand_p1_p2::<P>(&seed_pk));
+    let mut p = Zeroizing::new(expand_p1_p2::<P>(seed_pk));
 
     let p1_limbs = P::P1_LIMBS;
 
@@ -97,7 +97,7 @@ pub(crate) fn mayo_keypair_compact<P: MayoParameter>(
     }
 
     // Store seed_pk in cpk
-    cpk[..param_pk_seed_bytes].copy_from_slice(&seed_pk);
+    cpk[..param_pk_seed_bytes].copy_from_slice(seed_pk);
 
     // Compute Upper(P3) and pack into cpk
     let mut p3_upper = Zeroizing::new(vec![0u64; param_p3_limbs]);
