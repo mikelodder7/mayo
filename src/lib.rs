@@ -19,7 +19,8 @@
 //!
 //! All parameter sets implement the [`MayoParameter`] trait and can be used
 //! interchangeably as the generic parameter on [`KeyPair`], [`SigningKey`],
-//! [`VerifyingKey`], and [`Signature`].
+//! [`ExpandedSigningKey`], [`VerifyingKey`], [`ExpandedVerifyingKey`],
+//! [`VerificationContext`], and [`Signature`].
 //!
 //! # Quick Start
 //!
@@ -144,6 +145,46 @@
 //! keypair.verifying_key().verify(b"data", &sig).expect("verify");
 //! ```
 //!
+//! # Faster Repeated Signing
+//!
+//! [`ExpandedSigningKey`] caches secret-derived signing material for repeated
+//! signing with the same key. It keeps more sensitive material in memory than
+//! [`SigningKey`], and that material is zeroized on drop.
+//!
+//! ```
+//! use pq_mayo::{ExpandedSigningKey, KeyPair, Mayo1};
+//! use signature::{Signer, Verifier};
+//!
+//! let mut rng = rand::rng();
+//! let keypair = KeyPair::<Mayo1>::generate(&mut rng).expect("keygen");
+//! let expanded = ExpandedSigningKey::<Mayo1>::from(keypair.signing_key());
+//!
+//! let sig = expanded.try_sign(b"message").expect("sign");
+//! keypair.verifying_key().verify(b"message", &sig).expect("verify");
+//! ```
+//!
+//! # Faster Repeated Verification
+//!
+//! [`ExpandedVerifyingKey`] caches expanded public key material for repeated
+//! verification. [`VerificationContext`] also reuses mutable scratch buffers,
+//! so it verifies with `&mut self`.
+//!
+//! ```
+//! use pq_mayo::{ExpandedVerifyingKey, KeyPair, Mayo1, VerificationContext};
+//! use signature::{Signer, Verifier};
+//!
+//! let mut rng = rand::rng();
+//! let keypair = KeyPair::<Mayo1>::generate(&mut rng).expect("keygen");
+//! let msg = b"message";
+//! let sig = keypair.signing_key().try_sign(msg).expect("sign");
+//!
+//! let expanded = ExpandedVerifyingKey::<Mayo1>::from(keypair.verifying_key());
+//! expanded.verify(msg, &sig).expect("verify");
+//!
+//! let mut context = VerificationContext::<Mayo1>::from(&expanded);
+//! context.verify(msg, &sig).expect("verify with cached scratch");
+//! ```
+//!
 //! # Error Handling
 //!
 //! All fallible operations return [`error::Result<T>`](error::Result), which
@@ -169,11 +210,11 @@
 //! Enable the `serde` feature for serialization with any serde-compatible
 //! format. Keys and signatures are serialized as hex strings in
 //! human-readable formats (JSON, TOML, YAML) and as raw bytes in binary
-//! formats (bincode, postcard, CBOR).
+//! formats (postcard, CBOR, JSON, TOML, YAML).
 //!
 //! ```toml
 //! [dependencies]
-//! pq-mayo = { version = "0.1", features = ["serde"] }
+//! pq-mayo = { version = "0.5", features = ["serde"] }
 //! ```
 //!
 //! ```rust,ignore
@@ -201,7 +242,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! pq-mayo = { version = "0.1", features = ["js"] }
+//! pq-mayo = { version = "0.5", features = ["js"] }
 //! ```
 //!
 //! # Security Considerations
@@ -227,7 +268,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! pq-mayo = { version = "0.1", features = ["pkcs8"] }
+//! pq-mayo = { version = "0.5", features = ["pkcs8"] }
 //! ```
 //!
 //! [`EncodePrivateKey`]: https://docs.rs/pkcs8/latest/pkcs8/trait.EncodePrivateKey.html

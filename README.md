@@ -25,28 +25,30 @@ NOTE: MAYO-2 signature size increased from 186 B to 216 B as a result of the Rou
 
 ## Performance
 
-Benchmarked on Apple M1 (aarch64) with `-C target-cpu=native`:
+Benchmarked on Apple Silicon (aarch64) with `-C target-cpu=native`.
+Use the compact key types for minimal memory and serialized storage. Use the
+expanded/context types when repeatedly signing or verifying with the same key.
 
-| Operation    | Time       |
-|-------------|-----------|
-| Mayo1/keygen | 269.19 µs |
-| Mayo1/sign   | 698.57 µs |
-| Mayo1/verify | 192.85 µs |
-| Mayo2/keygen | 331.42 µs |
-| Mayo2/sign   | 477.97 µs |
-| Mayo2/verify | 87.92 µs  |
-| Mayo3/keygen | 765.33 µs |
-| Mayo3/sign   | 1.899 ms  |
-| Mayo3/verify | 434.75 µs |
-| Mayo5/keygen | 1.713 ms  |
-| Mayo5/sign   | 4.406 ms  |
-| Mayo5/verify | 665.64 µs |
+| Operation | Compact | Expanded | Context |
+|-----------|---------|----------|---------|
+| Mayo1/sign | 1.17 ms | 787 µs | - |
+| Mayo2/sign | 1.22 ms | 675 µs | - |
+| Mayo3/sign | 3.09 ms | 2.00 ms | - |
+| Mayo5/sign | 7.19 ms | 4.48 ms | - |
+| Mayo1/verify | 202 µs | 125 µs | 118 µs |
+| Mayo2/verify | 101 µs | 41 µs | 38 µs |
+| Mayo3/verify | 431 µs | 276 µs | 257 µs |
+| Mayo5/verify | 763 µs | 460 µs | 441 µs |
 
 Run your own benchmarks:
 
 ```sh
 cargo bench
 ```
+
+The expanded signing key stores secret-derived expanded material for faster
+repeated signing. The verification context stores public expanded material and
+mutable scratch buffers for faster repeated verification.
 
 ## Usage
 
@@ -127,13 +129,53 @@ let sig = keypair.signing_key().try_sign(b"test").expect("sign");
 vk.verify(b"test", &sig).expect("verify");
 ```
 
+### Faster Repeated Signing
+
+Use `ExpandedSigningKey` when signing many messages with the same key. The
+compact `SigningKey` remains the default storage format; the expanded form
+keeps additional secret-derived material in memory and zeroizes it on drop.
+
+```rust
+use pq_mayo::{ExpandedSigningKey, KeyPair, Mayo1};
+use signature::{Signer, Verifier};
+
+let mut rng = rand::rng();
+let keypair = KeyPair::<Mayo1>::generate(&mut rng).expect("keygen");
+let expanded = ExpandedSigningKey::<Mayo1>::from(keypair.signing_key());
+
+let sig = expanded.try_sign(b"message").expect("sign");
+keypair.verifying_key().verify(b"message", &sig).expect("verify");
+```
+
+### Faster Repeated Verification
+
+Use `ExpandedVerifyingKey` to cache expanded public key material. Use
+`VerificationContext` when verifying many signatures with the same public key;
+it also reuses mutable scratch buffers, so verification takes `&mut self`.
+
+```rust
+use pq_mayo::{ExpandedVerifyingKey, KeyPair, Mayo1, VerificationContext};
+use signature::{Signer, Verifier};
+
+let mut rng = rand::rng();
+let keypair = KeyPair::<Mayo1>::generate(&mut rng).expect("keygen");
+let msg = b"message";
+let sig = keypair.signing_key().try_sign(msg).expect("sign");
+
+let expanded = ExpandedVerifyingKey::<Mayo1>::from(keypair.verifying_key());
+expanded.verify(msg, &sig).expect("verify");
+
+let mut context = VerificationContext::<Mayo1>::from(&expanded);
+context.verify(msg, &sig).expect("verify with cached scratch");
+```
+
 ### Serde Support
 
 Enable the `serde` feature for JSON/binary serialization:
 
 ```toml
 [dependencies]
-pq-mayo = { version = "0.1", features = ["serde"] }
+pq-mayo = { version = "0.5", features = ["serde"] }
 ```
 
 ```rust,ignore
@@ -153,7 +195,7 @@ Enable the `pkcs8` feature for DER-encoded key serialization compatible with X.5
 
 ```toml
 [dependencies]
-pq-mayo = { version = "0.1", features = ["pkcs8"] }
+pq-mayo = { version = "0.5", features = ["pkcs8"] }
 ```
 
 This implements the standard RustCrypto key encoding traits:
@@ -201,19 +243,17 @@ for all cryptographic primitives. Enable the `js` feature to use the browser's
 
 ```toml
 [dependencies]
-pq-mayo = { version = "0.1", features = ["js"] }
+pq-mayo = { version = "0.5", features = ["js"] }
 ```
 
 ## Serialization
 
 This crate has been tested against the following `serde` compatible formats:
 
-- [x] serde_bare
-- [x] bincode
 - [x] postcard
-- [x] serde_cbor
+- [x] ciborium
 - [x] serde_json
-- [x] serde_yaml
+- [x] noyalib
 - [x] toml
 
 ## Mitigations
