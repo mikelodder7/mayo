@@ -531,7 +531,7 @@ fn bins_mul_add_x_inv(bins: &mut [u64], src: usize, dst: usize, n: usize) {
     // (callers pass valid bin offsets) and disjoint, so the raw read/write pair
     // never aliases. `i + 2 <= n` keeps each 128-bit access in range.
     unsafe {
-        let lsb = _mm_set1_epi64x(MASK_LSB as i64);
+        let lsb = _mm_set1_epi64x(MASK_LSB.cast_signed());
         let base = bins.as_mut_ptr();
         while i + 2 <= n {
             let x = _mm_loadu_si128(base.add(src + i).cast());
@@ -599,7 +599,7 @@ fn bins_mul_add_x(bins: &mut [u64], src: usize, dst: usize, n: usize) {
     // SAFETY: as in `bins_mul_add_x_inv` — SSE2 baseline, in-bounds disjoint
     // `src`/`dst` ranges, bounded 128-bit accesses.
     unsafe {
-        let msb = _mm_set1_epi64x(MASK_MSB as i64);
+        let msb = _mm_set1_epi64x(MASK_MSB.cast_signed());
         let base = bins.as_mut_ptr();
         while i + 2 <= n {
             let x = _mm_loadu_si128(base.add(src + i).cast());
