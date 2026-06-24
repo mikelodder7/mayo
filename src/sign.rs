@@ -162,7 +162,7 @@ pub(crate) fn compute_rhs<P: MayoParameter>(vpv: &mut [u64], t: &[u8], y: &mut [
 }
 
 /// Compute the linearized system matrix A from the M matrices (VtL).
-fn compute_a<P: MayoParameter>(vtl: &mut [u64], a_out: &mut [u8]) {
+fn compute_a<P: MayoParameter>(vtl: &mut [u64], a: &mut [u64], a_out: &mut [u8]) {
     let m_vec_limbs = P::M_VEC_LIMBS;
     let param_m = P::M;
     let param_o = P::O;
@@ -177,7 +177,9 @@ fn compute_a<P: MayoParameter>(vtl: &mut [u64], a_out: &mut [u8]) {
     let mut words_to_shift: usize = 0;
 
     let a_total = a_width * m_over_8;
-    let mut a = vec![0u64; a_total];
+    debug_assert!(a.len() >= a_total);
+    let a = &mut a[..a_total];
+    a.fill(0);
 
     // Zero out tails of m_vecs if necessary
     if param_m % 16 != 0 {
@@ -395,6 +397,8 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
     let mut y = vec![0u8; param_m];
     let a_row_size = param_m.div_ceil(8) * 8;
     let mut a_matrix = Zeroizing::new(vec![0u8; a_row_size * param_a_cols]);
+    let a_width = (param_o * param_k).div_ceil(16) * 16;
+    let mut a_scratch = vec![0u64; a_width * param_m.div_ceil(8)];
     let mut r = Zeroizing::new(vec![0u8; param_k * param_o + 1]);
 
     for ctr in 0..=255u8 {
@@ -430,7 +434,7 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
 
         // Compute the linearized system A
         a_matrix.fill(0);
-        compute_a::<P>(&mut mtmp, &mut a_matrix);
+        compute_a::<P>(&mut mtmp, &mut a_scratch, &mut a_matrix);
 
         // Clear last column
         for i in 0..param_m {

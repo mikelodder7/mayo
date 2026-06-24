@@ -5,6 +5,27 @@
 use crate::bitsliced::{m_vec_add, m_vec_mul_add, m_vec_multiply_bins};
 use crate::params::MayoParameter;
 
+/// Scratch space for [`m_calculate_ps_sps_with_scratch`].
+pub(crate) struct PsSpsScratch {
+    ps: Vec<u64>,
+    accumulator: Vec<u64>,
+    sps_accumulator: Vec<u64>,
+}
+
+impl PsSpsScratch {
+    pub(crate) fn new<P: MayoParameter>() -> Self {
+        let m_vec_limbs = P::M_VEC_LIMBS;
+        let k = P::K;
+        let n = P::N;
+
+        Self {
+            ps: vec![0u64; n * k * m_vec_limbs],
+            accumulator: vec![0u64; 16 * m_vec_limbs * k * n],
+            sps_accumulator: vec![0u64; 16 * m_vec_limbs * k * k],
+        }
+    }
+}
+
 /// Multiply m (possibly upper-triangular) matrices by a single matrix and accumulate.
 ///
 /// `bs_mat` contains bitsliced m-vectors in row-major upper-triangular order.
@@ -253,14 +274,14 @@ pub(crate) fn m_upper(m_vec_limbs: usize, input: &[u64], output: &mut [u64], siz
 }
 
 /// Compute P * S^t and then S * P * S^t (the SPS matrix for verification).
-pub(crate) fn m_calculate_ps_sps<P: MayoParameter>(
+pub(crate) fn m_calculate_ps_sps_with_scratch<P: MayoParameter>(
     p1: &[u64],
     p2: &[u64],
     p3: &[u64],
     s: &[u8],
     sps: &mut [u64],
+    scratch: &mut PsSpsScratch,
 ) {
-    let m = P::M;
     let v = P::V;
     let o = P::O;
     let k = P::K;
@@ -268,17 +289,31 @@ pub(crate) fn m_calculate_ps_sps<P: MayoParameter>(
     let m_vec_limbs = P::M_VEC_LIMBS;
 
     // Compute PS using bins accumulator
-    let mut ps = vec![0u64; n * k * m_vec_limbs];
-    let acc_size = 16 * m.div_ceil(16) * k * n;
-    let mut accumulator = vec![0u64; acc_size];
+    let ps_len = n * k * m_vec_limbs;
+    let acc_len = 16 * m_vec_limbs * k * n;
+    let sps_acc_len = 16 * m_vec_limbs * k * k;
+    debug_assert!(scratch.ps.len() >= ps_len);
+    debug_assert!(scratch.accumulator.len() >= acc_len);
+    debug_assert!(scratch.sps_accumulator.len() >= sps_acc_len);
+
+    let ps = &mut scratch.ps[..ps_len];
+    let accumulator = &mut scratch.accumulator[..acc_len];
+    let sps_accumulator = &mut scratch.sps_accumulator[..sps_acc_len];
+
+    ps.fill(0);
+    accumulator.fill(0);
+    sps_accumulator.fill(0);
 
     let mut p1_used = 0;
     for row in 0..v {
+        let acc_row_offset = row * k * 16 * m_vec_limbs;
         for j in row..v {
+            let src = &p1[p1_used * m_vec_limbs..(p1_used + 1) * m_vec_limbs];
             for col in 0..k {
-                let bin_idx = ((row * k + col) * 16 + usize::from(s[col * n + j])) * m_vec_limbs;
+                let bin_idx =
+                    acc_row_offset + (col * 16 + usize::from(s[col * n + j])) * m_vec_limbs;
                 m_vec_add(
-                    &p1[p1_used * m_vec_limbs..(p1_used + 1) * m_vec_limbs],
+                    src,
                     &mut accumulator[bin_idx..bin_idx + m_vec_limbs],
                     m_vec_limbs,
                 );
@@ -287,11 +322,12 @@ pub(crate) fn m_calculate_ps_sps<P: MayoParameter>(
         }
 
         for j in 0..o {
+            let src = &p2[(row * o + j) * m_vec_limbs..(row * o + j + 1) * m_vec_limbs];
             for col in 0..k {
                 let bin_idx =
-                    ((row * k + col) * 16 + usize::from(s[col * n + j + v])) * m_vec_limbs;
+                    acc_row_offset + (col * 16 + usize::from(s[col * n + j + v])) * m_vec_limbs;
                 m_vec_add(
-                    &p2[(row * o + j) * m_vec_limbs..(row * o + j + 1) * m_vec_limbs],
+                    src,
                     &mut accumulator[bin_idx..bin_idx + m_vec_limbs],
                     m_vec_limbs,
                 );
@@ -301,11 +337,14 @@ pub(crate) fn m_calculate_ps_sps<P: MayoParameter>(
 
     let mut p3_used = 0;
     for row in v..n {
+        let acc_row_offset = row * k * 16 * m_vec_limbs;
         for j in row..n {
+            let src = &p3[p3_used * m_vec_limbs..(p3_used + 1) * m_vec_limbs];
             for col in 0..k {
-                let bin_idx = ((row * k + col) * 16 + usize::from(s[col * n + j])) * m_vec_limbs;
+                let bin_idx =
+                    acc_row_offset + (col * 16 + usize::from(s[col * n + j])) * m_vec_limbs;
                 m_vec_add(
-                    &p3[p3_used * m_vec_limbs..(p3_used + 1) * m_vec_limbs],
+                    src,
                     &mut accumulator[bin_idx..bin_idx + m_vec_limbs],
                     m_vec_limbs,
                 );
@@ -326,15 +365,17 @@ pub(crate) fn m_calculate_ps_sps<P: MayoParameter>(
     }
 
     // Compute SPS = S * PS
-    let sps_acc_size = 16 * m.div_ceil(16) * k * k;
-    let mut sps_accumulator = vec![0u64; sps_acc_size];
-
     for row in 0..k {
-        for j in 0..n {
+        let s_row = &s[row * n..(row + 1) * n];
+        let sps_acc_row_offset = row * k * 16 * m_vec_limbs;
+        for (j, &s_j) in s_row.iter().enumerate() {
+            let bin = usize::from(s_j);
+            let ps_row_offset = j * k * m_vec_limbs;
             for col in 0..k {
-                let bin_idx = ((row * k + col) * 16 + usize::from(s[row * n + j])) * m_vec_limbs;
+                let bin_idx = sps_acc_row_offset + (col * 16 + bin) * m_vec_limbs;
+                let ps_idx = ps_row_offset + col * m_vec_limbs;
                 m_vec_add(
-                    &ps[(j * k + col) * m_vec_limbs..(j * k + col + 1) * m_vec_limbs],
+                    &ps[ps_idx..ps_idx + m_vec_limbs],
                     &mut sps_accumulator[bin_idx..bin_idx + m_vec_limbs],
                     m_vec_limbs,
                 );

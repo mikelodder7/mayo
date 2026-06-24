@@ -5,7 +5,7 @@
 use crate::codec::{decode, unpack_m_vecs};
 use crate::error::{Error, Result};
 use crate::keygen::expand_p1_p2;
-use crate::matrix_ops::m_calculate_ps_sps;
+use crate::matrix_ops::{PsSpsScratch, m_calculate_ps_sps_with_scratch};
 use crate::params::{MAX_M, MayoParameter};
 use crate::sign::compute_rhs;
 use shake::Shake256;
@@ -19,12 +19,13 @@ fn eval_public_map<P: MayoParameter>(
     p2: &[u64],
     p3: &[u64],
     eval: &mut [u8],
+    scratch: &mut PsSpsScratch,
 ) {
     let m_vec_limbs = P::M_VEC_LIMBS;
     let param_k = P::K;
 
     let mut sps = vec![0u64; param_k * param_k * m_vec_limbs];
-    m_calculate_ps_sps::<P>(p1, p2, p3, s, &mut sps);
+    m_calculate_ps_sps_with_scratch::<P>(p1, p2, p3, s, &mut sps, scratch);
 
     let zero = [0u8; MAX_M];
     compute_rhs::<P>(&mut sps, &zero, eval);
@@ -83,7 +84,8 @@ pub(crate) fn mayo_verify<P: MayoParameter>(msg: &[u8], sig: &[u8], cpk: &[u8]) 
 
     // Evaluate public map
     let mut y = vec![0u8; param_m];
-    eval_public_map::<P>(&s, p1, p2, &p3, &mut y);
+    let mut scratch = PsSpsScratch::new::<P>();
+    eval_public_map::<P>(&s, p1, p2, &p3, &mut y, &mut scratch);
 
     // Constant-time compare y == t
     if bool::from(y[..param_m].ct_eq(&t[..param_m])) {
