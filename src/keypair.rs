@@ -19,6 +19,11 @@ pub struct KeyPair<P: MayoParameter> {
     verifying_key: VerifyingKey<P>,
 }
 
+pub(crate) struct DerivedPublicKey {
+    pub(crate) expanded_pk: Vec<u64>,
+    pub(crate) p3: Vec<u64>,
+}
+
 impl<P: MayoParameter> AsRef<VerifyingKey<P>> for KeyPair<P> {
     fn as_ref(&self) -> &VerifyingKey<P> {
         &self.verifying_key
@@ -119,6 +124,13 @@ impl<P: MayoParameter> KeyPair<P> {
 
 /// Derive the compact public key from a compact secret key.
 pub(crate) fn derive_cpk_from_csk<P: MayoParameter>(csk: &[u8], cpk: &mut [u8]) {
+    let _ = derive_cpk_and_expanded_from_csk::<P>(csk, cpk);
+}
+
+pub(crate) fn derive_cpk_and_expanded_from_csk<P: MayoParameter>(
+    csk: &[u8],
+    cpk: &mut [u8],
+) -> DerivedPublicKey {
     use crate::codec::{decode, pack_m_vecs};
     use crate::keygen::expand_p1_p2;
     use crate::matrix_ops::{compute_p3, m_upper};
@@ -150,15 +162,16 @@ pub(crate) fn derive_cpk_from_csk<P: MayoParameter>(csk: &[u8], cpk: &mut [u8]) 
     let mut o = Zeroizing::new(vec![0u8; param_v * param_o]);
     decode(&s[param_pk_seed_bytes..], &mut o, param_v * param_o);
 
-    // Expand P1, P2
-    let mut p = Zeroizing::new(expand_p1_p2::<P>(seed_pk));
+    // Expand P1, P2. These are public once seed_pk is stored in cpk.
+    let p = expand_p1_p2::<P>(seed_pk);
     let p1_limbs = P::P1_LIMBS;
 
     // Compute P3
     let mut p3 = Zeroizing::new(vec![0u64; param_o * param_o * m_vec_limbs]);
     {
-        let (p1, p2) = p.split_at_mut(p1_limbs);
-        compute_p3::<P>(p1, p2, &o, &mut p3);
+        let p1 = &p[..p1_limbs];
+        let mut p2 = Zeroizing::new(p[p1_limbs..p1_limbs + P::P2_LIMBS].to_vec());
+        compute_p3::<P>(p1, &mut p2, &o, &mut p3);
     }
 
     // Store seed_pk
@@ -173,4 +186,9 @@ pub(crate) fn derive_cpk_from_csk<P: MayoParameter>(csk: &[u8], cpk: &mut [u8]) 
         param_p3_limbs / m_vec_limbs,
         param_m,
     );
+
+    DerivedPublicKey {
+        expanded_pk: p,
+        p3: p3_upper.to_vec(),
+    }
 }

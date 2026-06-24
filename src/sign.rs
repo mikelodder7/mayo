@@ -6,11 +6,11 @@ use crate::codec::{decode, encode};
 use crate::error::{Error, Result};
 use crate::gf16::{mat_add, mat_mul, mul_f};
 use crate::keygen::expand_p1_p2;
-use crate::keypair::derive_cpk_from_csk;
+use crate::keypair::derive_cpk_and_expanded_from_csk;
 use crate::matrix_ops::{compute_m_and_vpv, p1p1t_times_o};
 use crate::params::{F_TAIL_LEN, MAX_M_VEC_LIMBS, MayoParameter};
 use crate::sample::{SampleSolutionArgs, sample_solution};
-use crate::verify::mayo_verify;
+use crate::verify::mayo_verify_with_expanded_pk;
 use rand::CryptoRng;
 use shake::Shake256;
 use shake::digest::{ExtendableOutput, Update, XofReader};
@@ -482,8 +482,10 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
     // fault corrupting the stored cpk is caught on both sides of the check.
     // Mitigates all three attacks in Jendral & Dubrova 2024.
     let mut derived_cpk = vec![0u8; P::CPK_BYTES];
-    derive_cpk_from_csk::<P>(csk, &mut derived_cpk);
-    if mayo_verify::<P>(msg, sig, &derived_cpk).is_err() {
+    let derived_public = derive_cpk_and_expanded_from_csk::<P>(csk, &mut derived_cpk);
+    if mayo_verify_with_expanded_pk::<P>(msg, sig, &derived_public.expanded_pk, &derived_public.p3)
+        .is_err()
+    {
         return Err(Error::Signing);
     }
 
