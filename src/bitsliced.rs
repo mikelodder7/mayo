@@ -61,6 +61,10 @@ fn m_vec_mul_add_scalar(src: &[u64], a: u8, acc: &mut [u64], legs: usize) {
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "ssse3")]
+/// # Safety
+///
+/// The caller must ensure SSSE3 is available on the current CPU. `src` and
+/// `acc` must each contain at least `legs` limbs.
 unsafe fn m_vec_mul_add_ssse3(src: &[u64], a: u8, acc: &mut [u64], legs: usize) {
     #[cfg(target_arch = "x86")]
     use std::arch::x86::*;
@@ -222,6 +226,11 @@ unsafe fn m_vec_mul_add_avx2(src: &[u64], a: u8, acc: &mut [u64], legs: usize) {
 
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
+/// # Safety
+///
+/// The caller must ensure NEON is available on the current CPU. This is true
+/// for the AArch64 baseline. `src` and `acc` must each contain at least `legs`
+/// limbs.
 unsafe fn m_vec_mul_add_neon(src: &[u64], a: u8, acc: &mut [u64], legs: usize) {
     use std::arch::aarch64::*;
 

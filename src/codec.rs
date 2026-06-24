@@ -60,7 +60,6 @@ pub(crate) fn unpack_m_vecs(input: &[u8], output: &mut [u64], vecs: usize, m: us
 ///
 /// Each vector occupies `m_vec_limbs * 8` bytes in bitsliced form and `m/2` bytes
 /// in packed form.
-#[allow(clippy::cast_possible_truncation)]
 pub(crate) fn pack_m_vecs(input: &[u64], output: &mut [u8], vecs: usize, m: usize) {
     let m_vec_limbs = m.div_ceil(16);
     let packed_size = m / 2;
@@ -71,7 +70,7 @@ pub(crate) fn pack_m_vecs(input: &[u64], output: &mut [u8], vecs: usize, m: usiz
         for j in 0..packed_size {
             let limb_idx = j / 8;
             let byte_idx = j % 8;
-            output[i * packed_size + j] = (src[limb_idx] >> (byte_idx * 8)) as u8;
+            output[i * packed_size + j] = (src[limb_idx] >> (byte_idx * 8)).to_le_bytes()[0];
         }
     }
 }

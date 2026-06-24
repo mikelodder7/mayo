@@ -12,17 +12,29 @@ use crate::gf16::{mat_mul, mul_fx8, sub_f};
 /// - `r` and `x` are `k*o` bytes long
 ///
 /// Returns `true` on success, `false` if the system is singular.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn sample_solution(
-    a: &mut [u8],
-    y: &[u8],
-    r: &[u8],
-    x: &mut [u8],
-    k: usize,
-    o: usize,
-    m: usize,
-    a_cols: usize,
-) -> bool {
+pub(crate) struct SampleSolutionArgs<'a> {
+    pub(crate) a: &'a mut [u8],
+    pub(crate) y: &'a [u8],
+    pub(crate) r: &'a [u8],
+    pub(crate) x: &'a mut [u8],
+    pub(crate) k: usize,
+    pub(crate) o: usize,
+    pub(crate) m: usize,
+    pub(crate) a_cols: usize,
+}
+
+pub(crate) fn sample_solution(args: SampleSolutionArgs<'_>) -> bool {
+    let SampleSolutionArgs {
+        a,
+        y,
+        r,
+        x,
+        k,
+        o,
+        m,
+        a_cols,
+    } = args;
+
     let ko = k * o;
 
     // x <- r
@@ -76,7 +88,7 @@ pub(crate) fn sample_solution(
                 tmp = mul_fx8(u, tmp);
 
                 for ii in i..end {
-                    a[ii * a_cols + a_cols - 1] ^= ((tmp >> ((ii - i) * 8)) & 0xf) as u8;
+                    a[ii * a_cols + a_cols - 1] ^= ((tmp >> ((ii - i) * 8)) & 0xf).to_le_bytes()[0];
                 }
                 i += 8;
             }

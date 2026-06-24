@@ -259,7 +259,7 @@ pub use keypair::KeyPair;
 pub use mayo_signature::Signature;
 pub use params::{Mayo1, Mayo2, Mayo3, Mayo5, MayoParameter};
 pub use signing_key::SigningKey;
-pub use verifying_key::VerifyingKey;
+pub use verifying_key::{ExpandedVerifyingKey, VerifyingKey};
 
 #[cfg(feature = "pkcs8")]
 pub use crate::pkcs8::{MAYO1_OID, MAYO2_OID, MAYO3_OID, MAYO5_OID};
@@ -268,42 +268,66 @@ pub use crate::pkcs8::{MAYO1_OID, MAYO2_OID, MAYO3_OID, MAYO5_OID};
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::de::DeserializeOwned;
     use signature::Signer;
+
+    #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    #[serde(bound(
+        serialize = "T: serde::Serialize",
+        deserialize = "T: serde::de::DeserializeOwned"
+    ))]
+    struct SerdeEnvelope<T> {
+        value: T,
+    }
+
+    fn assert_serde_formats<T>(value: T)
+    where
+        T: serde::Serialize + DeserializeOwned + Clone + PartialEq + core::fmt::Debug + 'static,
+    {
+        let envelope = SerdeEnvelope { value };
+
+        let serialized = serde_json::to_string(&envelope).expect("serialize json");
+        let deserialized: SerdeEnvelope<T> =
+            serde_json::from_str(&serialized).expect("deserialize json");
+        assert_eq!(envelope, deserialized);
+
+        let serialized = postcard::to_stdvec(&envelope).expect("serialize postcard");
+        let deserialized: SerdeEnvelope<T> =
+            postcard::from_bytes(&serialized).expect("deserialize postcard");
+        assert_eq!(envelope, deserialized);
+
+        let mut serialized = Vec::new();
+        ciborium::into_writer(&envelope, &mut serialized).expect("serialize cbor");
+        let deserialized: SerdeEnvelope<T> =
+            ciborium::from_reader(serialized.as_slice()).expect("deserialize cbor");
+        assert_eq!(envelope, deserialized);
+
+        let serialized = toml::to_string(&envelope).expect("serialize toml");
+        let deserialized: SerdeEnvelope<T> = toml::from_str(&serialized).expect("deserialize toml");
+        assert_eq!(envelope, deserialized);
+
+        let serialized = noyalib::to_string(&envelope).expect("serialize yaml");
+        let deserialized: SerdeEnvelope<T> =
+            noyalib::from_str(&serialized).expect("deserialize yaml");
+        assert_eq!(envelope, deserialized);
+    }
 
     fn keypair_serde<P: MayoParameter>() {
         let mut rng = rand::rng();
         let keypair = KeyPair::<P>::generate(&mut rng).expect("keygen");
-        let serialized = serde_json::to_string(&keypair).expect("serialize");
-        let deserialized: KeyPair<P> = serde_json::from_str(&serialized).expect("deserialize");
-        assert_eq!(keypair, deserialized);
-
-        let serialized = postcard::to_stdvec(&keypair).expect("serialize");
-        let deserialized: KeyPair<P> = postcard::from_bytes(&serialized).expect("deserialize");
-        assert_eq!(keypair, deserialized);
+        assert_serde_formats(keypair);
     }
 
     fn signing_key_serde<P: MayoParameter>() {
         let mut rng = rand::rng();
         let keypair = KeyPair::<P>::generate(&mut rng).expect("keygen");
-        let serialized = serde_json::to_string(keypair.signing_key()).expect("serialize");
-        let deserialized: SigningKey<P> = serde_json::from_str(&serialized).expect("deserialize");
-        assert_eq!(keypair.signing_key(), &deserialized);
-
-        let serialized = postcard::to_stdvec(keypair.signing_key()).expect("serialize");
-        let deserialized: SigningKey<P> = postcard::from_bytes(&serialized).expect("deserialize");
-        assert_eq!(keypair.signing_key(), &deserialized);
+        assert_serde_formats(keypair.signing_key().clone());
     }
 
     fn verifying_key_serde<P: MayoParameter>() {
         let mut rng = rand::rng();
         let keypair = KeyPair::<P>::generate(&mut rng).expect("keygen");
-        let serialized = serde_json::to_string(keypair.verifying_key()).expect("serialize");
-        let deserialized: VerifyingKey<P> = serde_json::from_str(&serialized).expect("deserialize");
-        assert_eq!(keypair.verifying_key(), &deserialized);
-
-        let serialized = postcard::to_stdvec(keypair.verifying_key()).expect("serialize");
-        let deserialized: VerifyingKey<P> = postcard::from_bytes(&serialized).expect("deserialize");
-        assert_eq!(keypair.verifying_key(), &deserialized);
+        assert_serde_formats(keypair.verifying_key().clone());
     }
 
     fn signature_serde<P: MayoParameter>() {
@@ -311,13 +335,7 @@ mod tests {
         let keypair = KeyPair::<P>::generate(&mut rng).expect("keygen");
         let msg = b"hello world";
         let sig = keypair.signing_key().try_sign(msg).expect("sign");
-        let serialized = serde_json::to_string(&sig).expect("serialize");
-        let deserialized: Signature<P> = serde_json::from_str(&serialized).expect("deserialize");
-        assert_eq!(sig, deserialized);
-
-        let serialized = postcard::to_stdvec(&sig).expect("serialize");
-        let deserialized: Signature<P> = postcard::from_bytes(&serialized).expect("deserialize");
-        assert_eq!(sig, deserialized);
+        assert_serde_formats(sig);
     }
 
     #[test]

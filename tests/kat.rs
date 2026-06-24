@@ -251,8 +251,6 @@ fn run_kat_tests<P: MayoParameter>(kat_content: &str, max_vectors: usize) {
             .verify(&vector.msg, &sig)
             .expect("verification failed");
     }
-
-    eprintln!("  {} KAT vectors passed for {}", test_count, P::NAME);
 }
 
 // ============================================================================

@@ -31,17 +31,29 @@ impl PsSpsScratch {
 /// `bs_mat` contains bitsliced m-vectors in row-major upper-triangular order.
 /// `mat` is a plain byte matrix of size `bs_mat_cols x mat_cols`.
 /// Result is accumulated into `acc` of size `bs_mat_rows x mat_cols` m-vectors.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn mul_add_m_upper_triangular_mat_x_mat(
-    m_vec_limbs: usize,
-    bs_mat: &[u64],
-    mat: &[u8],
-    acc: &mut [u64],
-    bs_mat_rows: usize,
-    bs_mat_cols: usize,
-    mat_cols: usize,
-    triangular: bool,
-) {
+pub(crate) struct UpperTriangularMatMul<'a> {
+    pub(crate) m_vec_limbs: usize,
+    pub(crate) bs_mat: &'a [u64],
+    pub(crate) mat: &'a [u8],
+    pub(crate) acc: &'a mut [u64],
+    pub(crate) bs_mat_rows: usize,
+    pub(crate) bs_mat_cols: usize,
+    pub(crate) mat_cols: usize,
+    pub(crate) triangular: bool,
+}
+
+pub(crate) fn mul_add_m_upper_triangular_mat_x_mat(args: UpperTriangularMatMul<'_>) {
+    let UpperTriangularMatMul {
+        m_vec_limbs,
+        bs_mat,
+        mat,
+        acc,
+        bs_mat_rows,
+        bs_mat_cols,
+        mat_cols,
+        triangular,
+    } = args;
+
     let mut bs_mat_entries_used = 0;
     for r in 0..bs_mat_rows {
         let c_start = if triangular { r } else { 0 };
@@ -65,17 +77,29 @@ pub(crate) fn mul_add_m_upper_triangular_mat_x_mat(
 }
 
 /// Multiply m (possibly upper-triangular) matrices by the transpose of a single matrix.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn mul_add_m_upper_triangular_mat_x_mat_trans(
-    m_vec_limbs: usize,
-    bs_mat: &[u64],
-    mat: &[u8],
-    acc: &mut [u64],
-    bs_mat_rows: usize,
-    bs_mat_cols: usize,
-    mat_rows: usize,
-    triangular: bool,
-) {
+pub(crate) struct UpperTriangularMatMulTrans<'a> {
+    pub(crate) m_vec_limbs: usize,
+    pub(crate) bs_mat: &'a [u64],
+    pub(crate) mat: &'a [u8],
+    pub(crate) acc: &'a mut [u64],
+    pub(crate) bs_mat_rows: usize,
+    pub(crate) bs_mat_cols: usize,
+    pub(crate) mat_rows: usize,
+    pub(crate) triangular: bool,
+}
+
+pub(crate) fn mul_add_m_upper_triangular_mat_x_mat_trans(args: UpperTriangularMatMulTrans<'_>) {
+    let UpperTriangularMatMulTrans {
+        m_vec_limbs,
+        bs_mat,
+        mat,
+        acc,
+        bs_mat_rows,
+        bs_mat_cols,
+        mat_rows,
+        triangular,
+    } = args;
+
     let mut bs_mat_entries_used = 0;
     for r in 0..bs_mat_rows {
         let c_start = if triangular { r } else { 0 };
@@ -157,12 +181,30 @@ pub(crate) fn mul_add_mat_x_m_mat(
 
 /// Compute P1 * O (upper-triangular P1 times O matrix).
 pub(crate) fn p1_times_o<P: MayoParameter>(p1: &[u64], o: &[u8], acc: &mut [u64]) {
-    mul_add_m_upper_triangular_mat_x_mat(P::M_VEC_LIMBS, p1, o, acc, P::V, P::V, P::O, true);
+    mul_add_m_upper_triangular_mat_x_mat(UpperTriangularMatMul {
+        m_vec_limbs: P::M_VEC_LIMBS,
+        bs_mat: p1,
+        mat: o,
+        acc,
+        bs_mat_rows: P::V,
+        bs_mat_cols: P::V,
+        mat_cols: P::O,
+        triangular: true,
+    });
 }
 
 /// Compute P1 * V^t (upper-triangular P1 times transpose of V).
 pub(crate) fn p1_times_vt<P: MayoParameter>(p1: &[u64], v: &[u8], acc: &mut [u64]) {
-    mul_add_m_upper_triangular_mat_x_mat_trans(P::M_VEC_LIMBS, p1, v, acc, P::V, P::V, P::K, true);
+    mul_add_m_upper_triangular_mat_x_mat_trans(UpperTriangularMatMulTrans {
+        m_vec_limbs: P::M_VEC_LIMBS,
+        bs_mat: p1,
+        mat: v,
+        acc,
+        bs_mat_rows: P::V,
+        bs_mat_cols: P::V,
+        mat_rows: P::K,
+        triangular: true,
+    });
 }
 
 /// Compute (P1 + P1^t) * O and add to acc (which already contains P2).

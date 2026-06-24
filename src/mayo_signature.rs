@@ -57,7 +57,16 @@ impl<P: MayoParameter> TryFrom<Vec<u8>> for Signature<P> {
     type Error = Error;
 
     fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
-        Self::try_from(bytes.as_slice())
+        if bytes.len() != P::SIG_BYTES {
+            return Err(Error::InvalidSignatureLength {
+                expected: P::SIG_BYTES,
+                got: bytes.len(),
+            });
+        }
+        Ok(Self {
+            bytes,
+            _marker: PhantomData,
+        })
     }
 }
 

@@ -5,37 +5,39 @@
 use crate::bitsliced::vec_mul_add_u64;
 use crate::gf16::inverse_f;
 
+#[inline]
+fn low_u8(value: u64) -> u8 {
+    value.to_le_bytes()[0]
+}
+
 /// Extract a single GF(16) nibble from a packed u64 array.
 #[inline]
-#[allow(clippy::cast_possible_truncation)]
 fn m_extract_element(data: &[u64], index: usize) -> u8 {
     let leg = index / 16;
     let offset = index % 16;
-    ((data[leg] >> (offset * 4)) & 0xF) as u8
+    low_u8((data[leg] >> (offset * 4)) & 0xF)
 }
 
 /// Constant-time comparison: returns 0 if a == b, else all-ones (0xFFFFFFFFFFFFFFFF).
 #[inline]
-#[allow(clippy::cast_sign_loss)]
-fn ct_compare_64(a: i32, b: i32) -> u64 {
-    let diff = (a ^ b) as i64;
-    ((-diff) >> 63) as u64
+fn ct_compare_64(a: usize, b: usize) -> u64 {
+    let diff = a ^ b;
+    let nonzero = ((diff | diff.wrapping_neg()) >> (usize::BITS - 1)) & 1;
+    0u64.wrapping_sub(u64::from(nonzero != 0))
 }
 
 /// Constant-time greater-than: returns all-ones if a > b, else 0.
 #[inline]
-#[allow(clippy::cast_sign_loss)]
-fn ct_64_is_greater_than(a: i32, b: i32) -> u64 {
-    let diff = (b as i64) - (a as i64);
-    (diff >> 63) as u64
+fn ct_64_is_greater_than(a: usize, b: usize) -> u64 {
+    0u64.wrapping_sub(u64::from(a > b))
 }
 
 /// Constant-time comparison for u8: returns 0 if a == b, else 0xFF.
 #[inline]
-#[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
 pub(crate) fn ct_compare_8(a: u8, b: u8) -> u8 {
-    let diff = (a ^ b) as i32;
-    ((-diff) >> 31) as i8 as u8
+    let diff = a ^ b;
+    let nonzero = ((diff | diff.wrapping_neg()) >> 7) & 1;
+    0u8.wrapping_sub(nonzero)
 }
 
 /// Pack a row of GF(16) nibbles into u64 limbs (safe version).
@@ -61,12 +63,11 @@ fn ef_pack_m_vec_safe(input: &[u8], output: &mut [u64], ncols: usize) {
 }
 
 /// Unpack u64 limbs into a row of GF(16) nibbles (safe version).
-#[allow(clippy::cast_possible_truncation)]
 fn ef_unpack_m_vec_safe(legs: usize, input: &[u64], output: &mut [u8]) {
     for i in (0..legs * 16).step_by(2) {
         let limb_idx = (i / 2) / 8;
         let byte_idx = (i / 2) % 8;
-        let byte_val = ((input[limb_idx] >> (byte_idx * 8)) & 0xFF) as u8;
+        let byte_val = low_u8((input[limb_idx] >> (byte_idx * 8)) & 0xFF);
         output[i] = byte_val & 0xF;
         output[i + 1] = byte_val >> 4;
     }
@@ -75,11 +76,6 @@ fn ef_unpack_m_vec_safe(legs: usize, input: &[u64], output: &mut [u8]) {
 /// Put matrix in row echelon form with leading ones, in constant time.
 ///
 /// `a` is an `nrows x ncols` matrix of GF(16) elements stored as bytes.
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::cast_sign_loss
-)]
 pub(crate) fn ef(a: &mut [u8], nrows: usize, ncols: usize) {
     let row_len = ncols.div_ceil(16);
 
@@ -96,11 +92,11 @@ pub(crate) fn ef(a: &mut [u8], nrows: usize, ncols: usize) {
     let mut pivot_row_packed = vec![0u64; row_len];
     let mut pivot_row2 = vec![0u64; row_len];
 
-    let mut pivot_row: i32 = 0;
+    let mut pivot_row: usize = 0;
 
     for pivot_col in 0..ncols {
-        let pivot_row_lower_bound = 0i32.max(pivot_col as i32 + nrows as i32 - ncols as i32);
-        let pivot_row_upper_bound = (nrows as i32 - 1).min(pivot_col as i32);
+        let pivot_row_lower_bound = pivot_col.saturating_add(nrows).saturating_sub(ncols);
+        let pivot_row_upper_bound = (nrows - 1).min(pivot_col);
 
         // Zero out pivot row buffers
         pivot_row_packed.fill(0);
@@ -110,17 +106,17 @@ pub(crate) fn ef(a: &mut [u8], nrows: usize, ncols: usize) {
         let mut pivot: u8 = 0;
         let mut pivot_is_zero: u64 = u64::MAX;
 
-        let search_upper = (nrows as i32 - 1).min(pivot_row_upper_bound + 32);
+        let search_upper = (nrows - 1).min(pivot_row_upper_bound + 32);
         for row in pivot_row_lower_bound..=search_upper {
             let is_pivot_row = !ct_compare_64(row, pivot_row);
             let below_pivot_row = ct_64_is_greater_than(row, pivot_row);
 
             for j in 0..row_len {
                 pivot_row_packed[j] ^= (is_pivot_row | (below_pivot_row & pivot_is_zero))
-                    & packed_a[row as usize * row_len + j];
+                    & packed_a[row * row_len + j];
             }
             pivot = m_extract_element(&pivot_row_packed, pivot_col);
-            pivot_is_zero = !ct_compare_64(i32::from(pivot), 0);
+            pivot_is_zero = !ct_compare_64(usize::from(pivot), 0);
         }
 
         // Multiply pivot row by inverse of pivot
@@ -132,28 +128,25 @@ pub(crate) fn ef(a: &mut [u8], nrows: usize, ncols: usize) {
             let do_copy = !ct_compare_64(row, pivot_row) & !pivot_is_zero;
             let do_not_copy = !do_copy;
             for col in 0..row_len {
-                packed_a[row as usize * row_len + col] = (do_not_copy
-                    & packed_a[row as usize * row_len + col])
+                packed_a[row * row_len + col] = (do_not_copy & packed_a[row * row_len + col])
                     .wrapping_add(do_copy & pivot_row2[col]);
             }
         }
 
         // Eliminate entries below pivot
-        for row in pivot_row_lower_bound..nrows as i32 {
+        for row in pivot_row_lower_bound..nrows {
             let below_pivot = if row > pivot_row { 1u8 } else { 0u8 };
-            let elt_to_elim = m_extract_element(
-                &packed_a[row as usize * row_len..(row as usize + 1) * row_len],
-                pivot_col,
-            );
+            let elt_to_elim =
+                m_extract_element(&packed_a[row * row_len..(row + 1) * row_len], pivot_col);
             vec_mul_add_u64(
                 row_len,
                 &pivot_row2,
                 below_pivot.wrapping_mul(elt_to_elim),
-                &mut packed_a[row as usize * row_len..(row as usize + 1) * row_len],
+                &mut packed_a[row * row_len..(row + 1) * row_len],
             );
         }
 
-        pivot_row += (-((!pivot_is_zero) as i64)) as i32;
+        pivot_row += usize::from(pivot_is_zero != u64::MAX);
     }
 
     // Unpack the matrix

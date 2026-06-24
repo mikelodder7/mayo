@@ -9,7 +9,7 @@ use crate::keygen::expand_p1_p2;
 use crate::keypair::derive_cpk_from_csk;
 use crate::matrix_ops::{compute_m_and_vpv, p1p1t_times_o};
 use crate::params::{F_TAIL_LEN, MAX_M_VEC_LIMBS, MayoParameter};
-use crate::sample::sample_solution;
+use crate::sample::{SampleSolutionArgs, sample_solution};
 use crate::verify::mayo_verify;
 use rand::CryptoRng;
 use shake::Shake256;
@@ -449,16 +449,16 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
             param_k * param_o,
         );
 
-        if sample_solution(
-            &mut a_matrix,
-            &y,
-            &r,
-            &mut x,
-            param_k,
-            param_o,
-            param_m,
-            param_a_cols,
-        ) {
+        if sample_solution(SampleSolutionArgs {
+            a: &mut a_matrix,
+            y: &y,
+            r: &r,
+            x: &mut x,
+            k: param_k,
+            o: param_o,
+            m: param_m,
+            a_cols: param_a_cols,
+        }) {
             break;
         }
     }

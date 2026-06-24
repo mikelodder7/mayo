@@ -36,8 +36,11 @@ zeroize = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
+ciborium = "0.2"
+noyalib = "0.0.8"
 postcard = { version = "1", features = ["use-std"] }
 serde_json = "1"
+toml = "1.1"
 
 [lints.rust]
 missing_docs = "deny"

@@ -8,7 +8,6 @@ use crate::params::MayoParameter;
 use crate::signing_key::SigningKey;
 use crate::verifying_key::VerifyingKey;
 use rand::CryptoRng;
-use std::marker::PhantomData;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// A MAYO keypair containing both signing and verifying keys.
@@ -67,10 +66,7 @@ impl<P: MayoParameter> KeyPair<P> {
                 bytes: csk,
                 cpk: cpk.clone(),
             },
-            verifying_key: VerifyingKey {
-                bytes: cpk,
-                _marker: PhantomData,
-            },
+            verifying_key: VerifyingKey::from_bytes_unchecked(cpk),
         })
     }
 
@@ -97,19 +93,13 @@ impl<P: MayoParameter> KeyPair<P> {
                 bytes: csk,
                 cpk: cpk.clone(),
             },
-            verifying_key: VerifyingKey {
-                bytes: cpk,
-                _marker: PhantomData,
-            },
+            verifying_key: VerifyingKey::from_bytes_unchecked(cpk),
         })
     }
 
     /// Construct a keypair from a [`SigningKey`], deriving the corresponding [`VerifyingKey`].
     pub fn from_signing_key(signing_key: SigningKey<P>) -> Result<Self> {
-        let verifying_key = VerifyingKey {
-            bytes: signing_key.cpk.clone(),
-            _marker: PhantomData,
-        };
+        let verifying_key = VerifyingKey::from_bytes_unchecked(signing_key.cpk.clone());
         Ok(Self {
             signing_key,
             verifying_key,
@@ -154,14 +144,14 @@ pub(crate) fn derive_cpk_from_csk<P: MayoParameter>(csk: &[u8], cpk: &mut [u8]) 
     let mut reader = hasher.finalize_xof();
     reader.read(&mut s);
 
-    let seed_pk = s[..param_pk_seed_bytes].to_vec();
+    let seed_pk = &s[..param_pk_seed_bytes];
 
     // Decode O
     let mut o = Zeroizing::new(vec![0u8; param_v * param_o]);
     decode(&s[param_pk_seed_bytes..], &mut o, param_v * param_o);
 
     // Expand P1, P2
-    let mut p = Zeroizing::new(expand_p1_p2::<P>(&seed_pk));
+    let mut p = Zeroizing::new(expand_p1_p2::<P>(seed_pk));
     let p1_limbs = P::P1_LIMBS;
 
     // Compute P3
@@ -172,7 +162,7 @@ pub(crate) fn derive_cpk_from_csk<P: MayoParameter>(csk: &[u8], cpk: &mut [u8]) 
     }
 
     // Store seed_pk
-    cpk[..param_pk_seed_bytes].copy_from_slice(&seed_pk);
+    cpk[..param_pk_seed_bytes].copy_from_slice(seed_pk);
 
     // Upper(P3) -> pack into cpk
     let mut p3_upper = Zeroizing::new(vec![0u64; param_p3_limbs]);

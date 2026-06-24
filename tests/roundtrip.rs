@@ -1,6 +1,6 @@
 //! Basic sign/verify roundtrip tests.
 
-use pq_mayo::{KeyPair, Mayo1, Mayo2, Mayo3, Mayo5, VerifyingKey};
+use pq_mayo::{ExpandedVerifyingKey, KeyPair, Mayo1, Mayo2, Mayo3, Mayo5, VerifyingKey};
 use signature::{Signer, Verifier};
 
 fn roundtrip<P: pq_mayo::MayoParameter>() {
@@ -102,4 +102,26 @@ fn vk_from_sk_mayo3() {
 #[test]
 fn vk_from_sk_mayo5() {
     vk_from_sk::<Mayo5>();
+}
+
+#[test]
+fn expanded_verifying_key_mayo1() {
+    let mut rng = rand::rng();
+    let keypair = KeyPair::<Mayo1>::generate(&mut rng).expect("keygen failed");
+    let expanded = keypair.verifying_key().expand();
+    let expanded_from_bytes =
+        ExpandedVerifyingKey::<Mayo1>::try_from(keypair.verifying_key().as_ref())
+            .expect("expanded vk");
+
+    assert_eq!(expanded.as_ref(), keypair.verifying_key().as_ref());
+    assert_eq!(expanded, expanded_from_bytes);
+
+    let msg = b"expanded verifying key test";
+    let sig = keypair
+        .signing_key()
+        .try_sign(msg.as_slice())
+        .expect("signing failed");
+    expanded
+        .verify(msg.as_slice(), &sig)
+        .expect("expanded verification failed");
 }
