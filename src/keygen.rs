@@ -5,7 +5,7 @@
 use crate::codec::{decode, pack_m_vecs};
 use crate::error::Result;
 use crate::matrix_ops::{compute_p3, m_upper};
-use crate::params::MayoParameter;
+use crate::params::{MAX_M, MayoParameter};
 use aes::Aes128;
 use ctr::cipher::{KeyIvInit, StreamCipher};
 use rand::CryptoRng;
@@ -30,21 +30,31 @@ pub(crate) fn expand_p1_p2<P: MayoParameter>(seed_pk: &[u8]) -> Vec<u64> {
     let mut cipher = Aes128Ctr32::new_from_slices(&seed_pk[..16], &iv)
         .expect("AES-128-CTR key and IV are both 16 bytes");
 
-    // Stack buffer sized for the largest packed_size across all parameter sets (Mayo5: 71 bytes).
-    // Streaming one vector at a time avoids the ~840 KB heap allocation for Mayo5.
-    let mut buf = [0u8; 128];
+    // Generate keystream for several m-vectors per AES call to amortize the
+    // per-call `apply_keystream` overhead (thousands of vectors per expansion),
+    // while keeping the scratch on the stack — no ~840 KB bulk heap allocation.
+    // CTR keystream is continuous, so chunking yields byte-identical output to
+    // one-vector-at-a-time.
+    const VECS_PER_CHUNK: usize = 64;
+    let mut buf = [0u8; VECS_PER_CHUNK * (MAX_M / 2)];
 
-    for i in 0..num_vecs {
-        let chunk = &mut buf[..packed_size];
+    let mut i = 0;
+    while i < num_vecs {
+        let chunk_vecs = VECS_PER_CHUNK.min(num_vecs - i);
+        let chunk = &mut buf[..chunk_vecs * packed_size];
         chunk.fill(0);
         cipher.apply_keystream(chunk);
 
-        let dst = &mut result[i * m_vec_limbs..(i + 1) * m_vec_limbs];
-        for (j, c) in chunk.chunks(8).enumerate() {
-            let mut tmp = [0u8; 8];
-            tmp[..c.len()].copy_from_slice(c);
-            dst[j] = u64::from_le_bytes(tmp);
+        for v in 0..chunk_vecs {
+            let src = &chunk[v * packed_size..(v + 1) * packed_size];
+            let dst = &mut result[(i + v) * m_vec_limbs..(i + v + 1) * m_vec_limbs];
+            for (j, c) in src.chunks(8).enumerate() {
+                let mut tmp = [0u8; 8];
+                tmp[..c.len()].copy_from_slice(c);
+                dst[j] = u64::from_le_bytes(tmp);
+            }
         }
+        i += chunk_vecs;
     }
 
     result

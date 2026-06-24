@@ -2,7 +2,7 @@
 
 //! Matrix operations on bitsliced m-vectors for MAYO.
 
-use crate::bitsliced::{m_vec_add, m_vec_mul_add, m_vec_multiply_bins};
+use crate::bitsliced::{m_vec_add, m_vec_multiply_bins};
 use crate::params::{MAX_M_VEC_LIMBS, MayoParameter};
 
 /// Scratch space for [`m_calculate_ps_sps_with_scratch`].
@@ -26,56 +26,6 @@ impl PsSpsScratch {
     }
 }
 
-/// Multiply m (possibly upper-triangular) matrices by a single matrix and accumulate.
-///
-/// `bs_mat` contains bitsliced m-vectors in row-major upper-triangular order.
-/// `mat` is a plain byte matrix of size `bs_mat_cols x mat_cols`.
-/// Result is accumulated into `acc` of size `bs_mat_rows x mat_cols` m-vectors.
-pub(crate) struct UpperTriangularMatMul<'a> {
-    pub(crate) m_vec_limbs: usize,
-    pub(crate) bs_mat: &'a [u64],
-    pub(crate) mat: &'a [u8],
-    pub(crate) acc: &'a mut [u64],
-    pub(crate) bs_mat_rows: usize,
-    pub(crate) bs_mat_cols: usize,
-    pub(crate) mat_cols: usize,
-    pub(crate) triangular: bool,
-}
-
-pub(crate) fn mul_add_m_upper_triangular_mat_x_mat(args: UpperTriangularMatMul<'_>) {
-    let UpperTriangularMatMul {
-        m_vec_limbs,
-        bs_mat,
-        mat,
-        acc,
-        bs_mat_rows,
-        bs_mat_cols,
-        mat_cols,
-        triangular,
-    } = args;
-
-    let mut bs_mat_entries_used = 0;
-    for r in 0..bs_mat_rows {
-        let c_start = if triangular { r } else { 0 };
-        let row_acc_offset = m_vec_limbs * r * mat_cols;
-        for c in c_start..bs_mat_cols {
-            let src_offset = m_vec_limbs * bs_mat_entries_used;
-            let src = &bs_mat[src_offset..src_offset + m_vec_limbs];
-            let mat_row = &mat[c * mat_cols..(c + 1) * mat_cols];
-            for (k, &scalar) in mat_row.iter().enumerate() {
-                let dst_offset = row_acc_offset + m_vec_limbs * k;
-                m_vec_mul_add(
-                    src,
-                    scalar,
-                    &mut acc[dst_offset..dst_offset + m_vec_limbs],
-                    m_vec_limbs,
-                );
-            }
-            bs_mat_entries_used += 1;
-        }
-    }
-}
-
 /// Bin-accumulator multiply: `mat` (`mat_rows x mat_cols` plain GF(16) bytes)
 /// times `bs_mat` (`mat_cols x bs_mat_cols` m-vectors), writing
 /// `mat_rows x bs_mat_cols` m-vectors into `acc` (overwriting).
@@ -85,8 +35,7 @@ pub(crate) fn mul_add_m_upper_triangular_mat_x_mat(args: UpperTriangularMatMul<'
 /// `m_vec_multiply_bins` per output then folds the 16 bins. This trades the
 /// per-element multiply for a cheap XOR plus one deferred fold per output — the
 /// same structure used in verification's `m_calculate_ps_sps_with_scratch`.
-fn bins_mat_x_m_mat(
-    m_vec_limbs: usize,
+fn bins_mat_x_m_mat<P: MayoParameter>(
     mat: &[u8],
     bs_mat: &[u64],
     acc: &mut [u64],
@@ -94,7 +43,11 @@ fn bins_mat_x_m_mat(
     mat_cols: usize,
     bs_mat_cols: usize,
 ) {
-    let mvl = m_vec_limbs;
+    // `mvl` is a compile-time constant per monomorphization, so the inner
+    // m_vec_add / m_vec_multiply_bins loops fully unroll. A fresh `vec![0; …]`
+    // per call is intentional: `alloc_zeroed` yields lazily-zeroed OS pages,
+    // which benchmarked faster than reusing a buffer with an explicit `fill(0)`.
+    let mvl = P::M_VEC_LIMBS;
     let mut bins = vec![0u64; mat_rows * bs_mat_cols * 16 * mvl];
     for r in 0..mat_rows {
         let bins_row = r * bs_mat_cols * 16 * mvl;
@@ -118,15 +71,14 @@ fn bins_mat_x_m_mat(
 /// `mat`: computes `acc[r,k] = sum_{c>=r} bs_mat[r,c] * mat[k,c]`, writing
 /// `rows x mat_rows` m-vectors into `acc` (overwriting). `bs_mat` holds the
 /// `rows*(rows+1)/2` upper-triangular m-vectors in row-major order.
-fn bins_upper_tri_mat_x_mat_trans(
-    m_vec_limbs: usize,
+fn bins_upper_tri_mat_x_mat_trans<P: MayoParameter>(
     bs_mat: &[u64],
     mat: &[u8],
     acc: &mut [u64],
     rows: usize,
     mat_rows: usize,
 ) {
-    let mvl = m_vec_limbs;
+    let mvl = P::M_VEC_LIMBS;
     let cols = rows;
     let mut bins = vec![0u64; rows * mat_rows * 16 * mvl];
     let mut used = 0;
@@ -148,9 +100,9 @@ fn bins_upper_tri_mat_x_mat_trans(
     }
 }
 
-/// Multiply the transpose of a single matrix by m matrices and accumulate.
-pub(crate) fn mul_add_mat_trans_x_m_mat(
-    m_vec_limbs: usize,
+/// Multiply the transpose of a single matrix by m matrices and accumulate
+/// (overwrites `acc`). Bin-accumulator form.
+pub(crate) fn mul_add_mat_trans_x_m_mat<P: MayoParameter>(
     mat: &[u8],
     bs_mat: &[u64],
     acc: &mut [u64],
@@ -158,37 +110,61 @@ pub(crate) fn mul_add_mat_trans_x_m_mat(
     mat_cols: usize,
     bs_mat_cols: usize,
 ) {
+    let mvl = P::M_VEC_LIMBS;
+    let mut bins = vec![0u64; mat_cols * bs_mat_cols * 16 * mvl];
     for r in 0..mat_cols {
+        let bins_row = r * bs_mat_cols * 16 * mvl;
         for c in 0..mat_rows {
             let scalar = mat[c * mat_cols + r];
-            let src_row_offset = m_vec_limbs * c * bs_mat_cols;
-            let dst_row_offset = m_vec_limbs * r * bs_mat_cols;
+            let src_row = c * bs_mat_cols * mvl;
             for k in 0..bs_mat_cols {
-                let src_offset = src_row_offset + m_vec_limbs * k;
-                let dst_offset = dst_row_offset + m_vec_limbs * k;
-                m_vec_mul_add(
-                    &bs_mat[src_offset..src_offset + m_vec_limbs],
-                    scalar,
-                    &mut acc[dst_offset..dst_offset + m_vec_limbs],
-                    m_vec_limbs,
-                );
+                let bin = bins_row + (k * 16 + usize::from(scalar)) * mvl;
+                let src = &bs_mat[src_row + k * mvl..src_row + (k + 1) * mvl];
+                m_vec_add(src, &mut bins[bin..bin + mvl], mvl);
             }
         }
     }
+    for i in 0..mat_cols * bs_mat_cols {
+        let base = i * 16 * mvl;
+        m_vec_multiply_bins(&mut bins[base..], &mut acc[i * mvl..(i + 1) * mvl], mvl);
+    }
 }
 
-/// Compute P1 * O (upper-triangular P1 times O matrix).
+/// Compute P1 * O (upper-triangular P1 times O matrix), accumulating onto `acc`.
+///
+/// Bin-accumulator form, mirroring [`p1p1t_times_o`] but with a single
+/// (non-symmetric) contribution per stored upper-triangular entry, diagonal
+/// included.
 pub(crate) fn p1_times_o<P: MayoParameter>(p1: &[u64], o: &[u8], acc: &mut [u64]) {
-    mul_add_m_upper_triangular_mat_x_mat(UpperTriangularMatMul {
-        m_vec_limbs: P::M_VEC_LIMBS,
-        bs_mat: p1,
-        mat: o,
-        acc,
-        bs_mat_rows: P::V,
-        bs_mat_cols: P::V,
-        mat_cols: P::O,
-        triangular: true,
-    });
+    let m_vec_limbs = P::M_VEC_LIMBS;
+    let param_v = P::V;
+    let param_o = P::O;
+
+    let mut bins = vec![0u64; param_v * param_o * 16 * m_vec_limbs];
+    let mut used = 0;
+    for r in 0..param_v {
+        for c in r..param_v {
+            let src = &p1[used * m_vec_limbs..(used + 1) * m_vec_limbs];
+            let o_c_offset = c * param_o;
+            for k in 0..param_o {
+                let bin = (r * param_o + k) * 16 * m_vec_limbs
+                    + usize::from(o[o_c_offset + k]) * m_vec_limbs;
+                m_vec_add(src, &mut bins[bin..bin + m_vec_limbs], m_vec_limbs);
+            }
+            used += 1;
+        }
+    }
+
+    let mut tmp = [0u64; MAX_M_VEC_LIMBS];
+    for i in 0..param_v * param_o {
+        let base = i * 16 * m_vec_limbs;
+        m_vec_multiply_bins(&mut bins[base..], &mut tmp[..m_vec_limbs], m_vec_limbs);
+        m_vec_add(
+            &tmp[..m_vec_limbs],
+            &mut acc[i * m_vec_limbs..(i + 1) * m_vec_limbs],
+            m_vec_limbs,
+        );
+    }
 }
 
 /// Compute (P1 + P1^t) * O and add to acc (which already contains P2).
@@ -250,24 +226,22 @@ pub(crate) fn compute_m_and_vpv<P: MayoParameter>(
     vp1v: &mut [u64],
     pv: &mut [u64],
 ) {
-    let m_vec_limbs = P::M_VEC_LIMBS;
     let param_k = P::K;
     let param_v = P::V;
     let param_o = P::O;
 
     // VL = V * L
-    bins_mat_x_m_mat(m_vec_limbs, vdec, l, vl, param_k, param_v, param_o);
+    bins_mat_x_m_mat::<P>(vdec, l, vl, param_k, param_v, param_o);
 
     // VP1V = V * (P1 * V^t)
-    bins_upper_tri_mat_x_mat_trans(m_vec_limbs, p1, vdec, pv, param_v, param_k);
-    bins_mat_x_m_mat(m_vec_limbs, vdec, pv, vp1v, param_k, param_v, param_k);
+    bins_upper_tri_mat_x_mat_trans::<P>(p1, vdec, pv, param_v, param_k);
+    bins_mat_x_m_mat::<P>(vdec, pv, vp1v, param_k, param_v, param_k);
 }
 
 /// Compute P3 = O^t * (P1*O + P2).
 ///
 /// Note: this modifies P2 in place (adds P1*O to it).
 pub(crate) fn compute_p3<P: MayoParameter>(p1: &[u64], p2: &mut [u64], o: &[u8], p3: &mut [u64]) {
-    let m_vec_limbs = P::M_VEC_LIMBS;
     let param_v = P::V;
     let param_o = P::O;
 
@@ -275,7 +249,7 @@ pub(crate) fn compute_p3<P: MayoParameter>(p1: &[u64], p2: &mut [u64], o: &[u8],
     p1_times_o::<P>(p1, o, p2);
 
     // P3 = O^t * P2
-    mul_add_mat_trans_x_m_mat(m_vec_limbs, o, p2, p3, param_v, param_o, param_o);
+    mul_add_mat_trans_x_m_mat::<P>(o, p2, p3, param_v, param_o, param_o);
 }
 
 /// Compute upper-triangular form of a square matrix of m-vectors.

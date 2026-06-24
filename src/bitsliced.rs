@@ -404,18 +404,6 @@ fn dispatch_mul_add(src: &[u64], a: u8, acc: &mut [u64], legs: usize) {
     m_vec_mul_add_scalar(src, a, acc, legs)
 }
 
-/// Multiply-accumulate: `acc += src * a` where `a` is a GF(16) scalar.
-#[inline]
-pub(crate) fn m_vec_mul_add(src: &[u64], a: u8, acc: &mut [u64], m_vec_limbs: usize) {
-    // Re-slice to the exact length so a too-short slice panics here (safe) rather
-    // than reaching the raw-pointer SIMD kernels, where `legs * 8` byte offsets
-    // would be out-of-bounds UB. One bounds check per call — negligible beside
-    // the kernel work, and it lets the optimizer prove the SIMD accesses in-range.
-    let src = &src[..m_vec_limbs];
-    let acc = &mut acc[..m_vec_limbs];
-    dispatch_mul_add(src, a, acc, m_vec_limbs);
-}
-
 /// Multiply-accumulate for variable-length vectors (used in echelon form).
 #[inline]
 pub(crate) fn vec_mul_add_u64(legs: usize, src: &[u64], a: u8, acc: &mut [u64]) {
