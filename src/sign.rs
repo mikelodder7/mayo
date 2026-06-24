@@ -6,18 +6,29 @@ use crate::codec::{decode, encode};
 use crate::error::{Error, Result};
 use crate::gf16::{add_f, mul_f};
 use crate::keygen::expand_p1_p2;
-use crate::keypair::derive_cpk_and_expanded_from_csk;
-use crate::matrix_ops::{compute_m_and_vpv, p1p1t_times_o};
+use crate::matrix_ops::{compute_m_and_vpv, compute_p3, m_upper, p1p1t_times_o};
 use crate::params::{F_TAIL_LEN, MAX_M_VEC_LIMBS, MayoParameter};
 use crate::sample::{SampleSolutionArgs, sample_solution};
-use crate::verify::mayo_verify_with_expanded_pk;
+use crate::verify::mayo_verify_with_split_pk;
 use rand::CryptoRng;
 use shake::Shake256;
 use shake::digest::{ExtendableOutput, Update, XofReader};
 use zeroize::Zeroizing;
 
-/// Expand a compact secret key into P1, L (=(P1+P1^t)*O + P2), and O.
-pub(crate) fn expand_sk<P: MayoParameter>(csk: &[u8]) -> (Zeroizing<Vec<u64>>, Zeroizing<Vec<u8>>) {
+/// Expanded secret-key material produced by [`expand_sk`].
+pub(crate) struct ExpandedSecretKey {
+    /// `P1 ‖ L`, where `L = (P1 + P1^t)*O + P2`, in bitsliced `u64` limbs.
+    /// Secret: `L` encodes the oil subspace `O`.
+    pub(crate) p1_l: Zeroizing<Vec<u64>>,
+    /// `P2` (public) in bitsliced `u64` limbs, retained so the verify-after-sign
+    /// fault check can reuse it instead of re-expanding P1/P2 from the seed.
+    pub(crate) p2: Vec<u64>,
+    /// The oil subspace basis `O` (secret).
+    pub(crate) o: Zeroizing<Vec<u8>>,
+}
+
+/// Expand a compact secret key into P1, L (=(P1+P1^t)*O + P2), P2, and O.
+pub(crate) fn expand_sk<P: MayoParameter>(csk: &[u8]) -> ExpandedSecretKey {
     let param_o = P::O;
     let param_v = P::V;
     let param_o_bytes = P::O_BYTES;
@@ -40,6 +51,10 @@ pub(crate) fn expand_sk<P: MayoParameter>(csk: &[u8]) -> (Zeroizing<Vec<u64>>, Z
     // Expand P1 and P2; wrap in Zeroizing because L encodes secret O
     let mut p = Zeroizing::new(expand_p1_p2::<P>(&s[..param_pk_seed_bytes]));
 
+    // Save the public P2 before it is overwritten by L. The verify-after-sign
+    // fault check reuses it to recompute P3, avoiding a second AES expansion.
+    let p2 = p[P::P1_LIMBS..].to_vec();
+
     // Compute L = (P1 + P1^t)*O + P2
     // L replaces P2 in memory
     {
@@ -47,7 +62,7 @@ pub(crate) fn expand_sk<P: MayoParameter>(csk: &[u8]) -> (Zeroizing<Vec<u64>>, Z
         p1p1t_times_o::<P>(p1, &o, l);
     }
 
-    (p, o)
+    ExpandedSecretKey { p1_l: p, p2, o }
 }
 
 /// Transpose a 16x16 matrix of nibbles packed in 16 u64 values.
@@ -325,8 +340,8 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
     csk: &[u8],
     rng: &mut impl CryptoRng,
 ) -> Result<usize> {
-    let (p, o_mat) = expand_sk::<P>(csk);
-    mayo_sign_signature_with_expanded_sk::<P>(sig, msg, csk, &p, &o_mat, rng)
+    let esk = expand_sk::<P>(csk);
+    mayo_sign_signature_with_expanded_sk::<P>(sig, msg, csk, &esk.p1_l, &esk.p2, &esk.o, rng)
 }
 
 pub(crate) fn mayo_sign_signature_with_expanded_sk<P: MayoParameter>(
@@ -334,6 +349,7 @@ pub(crate) fn mayo_sign_signature_with_expanded_sk<P: MayoParameter>(
     msg: &[u8],
     csk: &[u8],
     p: &[u64],
+    p2: &[u64],
     o_mat: &[u8],
     rng: &mut impl CryptoRng,
 ) -> Result<usize> {
@@ -488,14 +504,22 @@ pub(crate) fn mayo_sign_signature_with_expanded_sk<P: MayoParameter>(
     encode(&s, sig, param_n * param_k);
     sig[param_sig_bytes - param_salt_bytes..param_sig_bytes].copy_from_slice(&salt);
 
-    // Fault attack countermeasure: recompute cpk from csk independently so a
-    // fault corrupting the stored cpk is caught on both sides of the check.
-    // Mitigates all three attacks in Jendral & Dubrova 2024.
-    let mut derived_cpk = vec![0u8; P::CPK_BYTES];
-    let derived_public = derive_cpk_and_expanded_from_csk::<P>(csk, &mut derived_cpk);
-    if mayo_verify_with_expanded_pk::<P>(msg, sig, &derived_public.expanded_pk, &derived_public.p3)
-        .is_err()
-    {
+    // Fault-attack countermeasure: verify the signature we just produced against
+    // an independently recomputed public map before releasing it, catching faults
+    // that would otherwise leak the secret key (Jendral & Dubrova 2024).
+    //
+    // P1 and P2 are public; we reuse the copies already expanded for signing and
+    // recompute only the secret-dependent P3 here, instead of re-expanding P1/P2
+    // from the seed. This removes a second AES-CTR expansion (~1/3 of signing
+    // time) while still re-deriving the secret-dependent material and running a
+    // full public-map verification, so signing faults remain caught.
+    let p1 = &p[..P::P1_LIMBS];
+    let mut p2_work = p2.to_vec();
+    let mut p3 = vec![0u64; param_o * param_o * m_vec_limbs];
+    compute_p3::<P>(p1, &mut p2_work, o_mat, &mut p3);
+    let mut p3_upper = vec![0u64; P::P3_LIMBS];
+    m_upper(m_vec_limbs, &p3, &mut p3_upper, param_o);
+    if mayo_verify_with_split_pk::<P>(msg, sig, p1, p2, &p3_upper).is_err() {
         return Err(Error::Signing);
     }
 

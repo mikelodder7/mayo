@@ -15,6 +15,66 @@ const MASK_LSB: u64 = 0x1111111111111111;
 const MASK_MSB: u64 = 0x8888888888888888;
 
 /// Add an m-vector: `acc ^= src`.
+///
+/// On aarch64 the XOR is done two `u64` limbs at a time via NEON; MAYO's
+/// `m_vec_limbs` (4–9) leaves at most one scalar-handled tail limb. This is the
+/// hottest primitive in the bin-accumulator matmuls, called O(V²·K) times per
+/// signature.
+#[cfg(target_arch = "aarch64")]
+#[inline]
+pub(crate) fn m_vec_add(src: &[u64], acc: &mut [u64], m_vec_limbs: usize) {
+    use std::arch::aarch64::*;
+
+    let src = &src[..m_vec_limbs];
+    let acc = &mut acc[..m_vec_limbs];
+    let mut i = 0;
+    // SAFETY: NEON is baseline on aarch64; the `i + 2 <= m_vec_limbs` bound and
+    // the reslices above keep every 128-bit load/store in range.
+    unsafe {
+        while i + 2 <= m_vec_limbs {
+            let s = vld1q_u64(src.as_ptr().add(i));
+            let a = vld1q_u64(acc.as_ptr().add(i));
+            vst1q_u64(acc.as_mut_ptr().add(i), veorq_u64(s, a));
+            i += 2;
+        }
+    }
+    if i < m_vec_limbs {
+        acc[i] ^= src[i];
+    }
+}
+
+/// Add an m-vector: `acc ^= src`.
+///
+/// On x86_64 the XOR is done two `u64` limbs at a time via SSE2, which is part
+/// of the x86_64 baseline ISA (no runtime feature check, so nothing branches in
+/// this per-call-millions hot loop). The op is a plain XOR with no byte shuffle,
+/// so SSSE3/AVX2 would only widen 2→4 limbs for 4–9-limb vectors — not worth a
+/// per-call `is_x86_feature_detected!` branch here.
+#[cfg(target_arch = "x86_64")]
+#[inline]
+pub(crate) fn m_vec_add(src: &[u64], acc: &mut [u64], m_vec_limbs: usize) {
+    use std::arch::x86_64::*;
+
+    let src = &src[..m_vec_limbs];
+    let acc = &mut acc[..m_vec_limbs];
+    let mut i = 0;
+    // SAFETY: SSE2 is baseline on x86_64; the `i + 2 <= m_vec_limbs` bound and
+    // the reslices above keep every 128-bit load/store in range.
+    unsafe {
+        while i + 2 <= m_vec_limbs {
+            let s = _mm_loadu_si128(src.as_ptr().add(i).cast());
+            let a = _mm_loadu_si128(acc.as_ptr().add(i).cast());
+            _mm_storeu_si128(acc.as_mut_ptr().add(i).cast(), _mm_xor_si128(s, a));
+            i += 2;
+        }
+    }
+    if i < m_vec_limbs {
+        acc[i] ^= src[i];
+    }
+}
+
+/// Add an m-vector: `acc ^= src` (scalar fallback for non-SIMD targets).
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 #[inline]
 pub(crate) fn m_vec_add(src: &[u64], acc: &mut [u64], m_vec_limbs: usize) {
     for i in 0..m_vec_limbs {
@@ -368,7 +428,76 @@ pub(crate) fn vec_mul_add_u64(legs: usize, src: &[u64], a: u8, acc: &mut [u64]) 
 // Remaining bitsliced primitives
 // ────────────────────────────────────────────────────────────────────────────
 
+// The bin-fold ladder below is the second-hottest signing primitive after
+// `m_vec_add`. The aarch64 (NEON) and x86_64 (SSE2, baseline ISA) paths process
+// two `u64` limbs per SIMD op. Two GF(16) identities let the per-lane "multiply
+// by small constant" be done with only shifts and XORs (neither NEON nor SSE2
+// has a 64-bit-lane SIMD multiply): for `t` whose set bits sit only at each
+// nibble's low bit, `t * 9 == t ^ (t << 3)`; likewise for `u` of the same shape,
+// `u * 3 == u ^ (u << 1)`. SSE2 needs no runtime detect, so the per-call-heavy
+// ladder stays branch-free.
+
 /// Apply mul-add-x-inv from `bins[src..]` into `bins[dst..]` for `n` limbs.
+#[cfg(target_arch = "aarch64")]
+#[inline]
+fn bins_mul_add_x_inv(bins: &mut [u64], src: usize, dst: usize, n: usize) {
+    use std::arch::aarch64::*;
+    let mut i = 0;
+    // SAFETY: NEON is baseline on aarch64; `src`/`dst` bin ranges are in-bounds
+    // (callers pass valid bin offsets) and disjoint, so the raw read/write pair
+    // never aliases. `i + 2 <= n` keeps each 128-bit access in range.
+    unsafe {
+        let lsb = vdupq_n_u64(MASK_LSB);
+        let base = bins.as_mut_ptr();
+        while i + 2 <= n {
+            let x = vld1q_u64(base.add(src + i));
+            let t = vandq_u64(x, lsb);
+            let term1 = vshrq_n_u64::<1>(veorq_u64(x, t));
+            let term2 = veorq_u64(t, vshlq_n_u64::<3>(t)); // t * 9
+            let d = vld1q_u64(base.add(dst + i));
+            vst1q_u64(base.add(dst + i), veorq_u64(d, veorq_u64(term1, term2)));
+            i += 2;
+        }
+    }
+    if i < n {
+        let t = bins[src + i] & MASK_LSB;
+        bins[dst + i] ^= ((bins[src + i] ^ t) >> 1) ^ (t.wrapping_mul(9));
+    }
+}
+
+/// Apply mul-add-x-inv from `bins[src..]` into `bins[dst..]` for `n` limbs.
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn bins_mul_add_x_inv(bins: &mut [u64], src: usize, dst: usize, n: usize) {
+    use std::arch::x86_64::*;
+    let mut i = 0;
+    // SAFETY: SSE2 is baseline on x86_64; `src`/`dst` bin ranges are in-bounds
+    // (callers pass valid bin offsets) and disjoint, so the raw read/write pair
+    // never aliases. `i + 2 <= n` keeps each 128-bit access in range.
+    unsafe {
+        let lsb = _mm_set1_epi64x(MASK_LSB as i64);
+        let base = bins.as_mut_ptr();
+        while i + 2 <= n {
+            let x = _mm_loadu_si128(base.add(src + i).cast());
+            let t = _mm_and_si128(x, lsb);
+            let term1 = _mm_srli_epi64(_mm_xor_si128(x, t), 1);
+            let term2 = _mm_xor_si128(t, _mm_slli_epi64(t, 3)); // t * 9
+            let d = _mm_loadu_si128(base.add(dst + i).cast());
+            _mm_storeu_si128(
+                base.add(dst + i).cast(),
+                _mm_xor_si128(d, _mm_xor_si128(term1, term2)),
+            );
+            i += 2;
+        }
+    }
+    if i < n {
+        let t = bins[src + i] & MASK_LSB;
+        bins[dst + i] ^= ((bins[src + i] ^ t) >> 1) ^ (t.wrapping_mul(9));
+    }
+}
+
+/// Apply mul-add-x-inv from `bins[src..]` into `bins[dst..]` for `n` limbs.
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 #[inline]
 fn bins_mul_add_x_inv(bins: &mut [u64], src: usize, dst: usize, n: usize) {
     for i in 0..n {
@@ -378,6 +507,66 @@ fn bins_mul_add_x_inv(bins: &mut [u64], src: usize, dst: usize, n: usize) {
 }
 
 /// Apply mul-add-x from `bins[src..]` into `bins[dst..]` for `n` limbs.
+#[cfg(target_arch = "aarch64")]
+#[inline]
+fn bins_mul_add_x(bins: &mut [u64], src: usize, dst: usize, n: usize) {
+    use std::arch::aarch64::*;
+    let mut i = 0;
+    // SAFETY: as in `bins_mul_add_x_inv` — NEON baseline, in-bounds disjoint
+    // `src`/`dst` ranges, bounded 128-bit accesses.
+    unsafe {
+        let msb = vdupq_n_u64(MASK_MSB);
+        let base = bins.as_mut_ptr();
+        while i + 2 <= n {
+            let x = vld1q_u64(base.add(src + i));
+            let t = vandq_u64(x, msb);
+            let term1 = vshlq_n_u64::<1>(veorq_u64(x, t));
+            let u = vshrq_n_u64::<3>(t);
+            let term2 = veorq_u64(u, vshlq_n_u64::<1>(u)); // (t >> 3) * 3
+            let d = vld1q_u64(base.add(dst + i));
+            vst1q_u64(base.add(dst + i), veorq_u64(d, veorq_u64(term1, term2)));
+            i += 2;
+        }
+    }
+    if i < n {
+        let t = bins[src + i] & MASK_MSB;
+        bins[dst + i] ^= ((bins[src + i] ^ t) << 1) ^ ((t >> 3).wrapping_mul(3));
+    }
+}
+
+/// Apply mul-add-x from `bins[src..]` into `bins[dst..]` for `n` limbs.
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn bins_mul_add_x(bins: &mut [u64], src: usize, dst: usize, n: usize) {
+    use std::arch::x86_64::*;
+    let mut i = 0;
+    // SAFETY: as in `bins_mul_add_x_inv` — SSE2 baseline, in-bounds disjoint
+    // `src`/`dst` ranges, bounded 128-bit accesses.
+    unsafe {
+        let msb = _mm_set1_epi64x(MASK_MSB as i64);
+        let base = bins.as_mut_ptr();
+        while i + 2 <= n {
+            let x = _mm_loadu_si128(base.add(src + i).cast());
+            let t = _mm_and_si128(x, msb);
+            let term1 = _mm_slli_epi64(_mm_xor_si128(x, t), 1);
+            let u = _mm_srli_epi64(t, 3);
+            let term2 = _mm_xor_si128(u, _mm_slli_epi64(u, 1)); // (t >> 3) * 3
+            let d = _mm_loadu_si128(base.add(dst + i).cast());
+            _mm_storeu_si128(
+                base.add(dst + i).cast(),
+                _mm_xor_si128(d, _mm_xor_si128(term1, term2)),
+            );
+            i += 2;
+        }
+    }
+    if i < n {
+        let t = bins[src + i] & MASK_MSB;
+        bins[dst + i] ^= ((bins[src + i] ^ t) << 1) ^ ((t >> 3).wrapping_mul(3));
+    }
+}
+
+/// Apply mul-add-x from `bins[src..]` into `bins[dst..]` for `n` limbs.
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 #[inline]
 fn bins_mul_add_x(bins: &mut [u64], src: usize, dst: usize, n: usize) {
     for i in 0..n {
@@ -439,6 +628,83 @@ mod tests {
         }
         f(&src, a, &mut acc, legs);
         acc
+    }
+
+    /// Deterministic xorshift fill of `n` u64s.
+    fn fill(seed: u64, n: usize) -> Vec<u64> {
+        let mut s = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(1);
+        (0..n)
+            .map(|_| {
+                s ^= s << 13;
+                s ^= s >> 7;
+                s ^= s << 17;
+                s
+            })
+            .collect()
+    }
+
+    /// `m_vec_add` (NEON / SSE2 / scalar, whichever the target selects) must
+    /// equal the plain scalar XOR for every length, including the SIMD tail.
+    #[test]
+    fn m_vec_add_matches_scalar() {
+        for legs in 1..=33usize {
+            let src = fill(0xADD ^ legs as u64, legs);
+            let mut acc = fill(0xACC ^ legs as u64, legs);
+            let mut expected = acc.clone();
+            for i in 0..legs {
+                expected[i] ^= src[i];
+            }
+            m_vec_add(&src, &mut acc, legs);
+            assert_eq!(expected, acc, "m_vec_add != scalar (legs={legs})");
+        }
+    }
+
+    /// Scalar reference for the bin-fold ladder, identical algorithm to the
+    /// dispatched (possibly SIMD) `bins_mul_add_x[_inv]`. Guarantees the SIMD
+    /// ladder is validated against scalar on every architecture's CI.
+    fn multiply_bins_ref(bins: &[u64], mvl: usize) -> Vec<u64> {
+        let mut b = bins.to_vec();
+        let x_inv = |b: &mut [u64], src: usize, dst: usize| {
+            for i in 0..mvl {
+                let t = b[src + i] & MASK_LSB;
+                b[dst + i] ^= ((b[src + i] ^ t) >> 1) ^ (t.wrapping_mul(9));
+            }
+        };
+        let x = |b: &mut [u64], src: usize, dst: usize| {
+            for i in 0..mvl {
+                let t = b[src + i] & MASK_MSB;
+                b[dst + i] ^= ((b[src + i] ^ t) << 1) ^ ((t >> 3).wrapping_mul(3));
+            }
+        };
+        x_inv(&mut b, 5 * mvl, 10 * mvl);
+        x(&mut b, 11 * mvl, 12 * mvl);
+        x_inv(&mut b, 10 * mvl, 7 * mvl);
+        x(&mut b, 12 * mvl, 6 * mvl);
+        x_inv(&mut b, 7 * mvl, 14 * mvl);
+        x(&mut b, 6 * mvl, 3 * mvl);
+        x_inv(&mut b, 14 * mvl, 15 * mvl);
+        x(&mut b, 3 * mvl, 8 * mvl);
+        x_inv(&mut b, 15 * mvl, 13 * mvl);
+        x(&mut b, 8 * mvl, 4 * mvl);
+        x_inv(&mut b, 13 * mvl, 9 * mvl);
+        x(&mut b, 4 * mvl, 2 * mvl);
+        x_inv(&mut b, 9 * mvl, mvl);
+        x(&mut b, 2 * mvl, mvl);
+        b[mvl..2 * mvl].to_vec()
+    }
+
+    /// The dispatched `m_vec_multiply_bins` (SIMD ladder on aarch64/x86_64) must
+    /// match the scalar ladder for every MAYO `m_vec_limbs`.
+    #[test]
+    fn multiply_bins_matches_scalar() {
+        for mvl in 1..=9usize {
+            let bins = fill(0xB1 ^ mvl as u64, 16 * mvl);
+            let expected = multiply_bins_ref(&bins, mvl);
+            let mut work = bins.clone();
+            let mut out = vec![0u64; mvl];
+            m_vec_multiply_bins(&mut work, &mut out, mvl);
+            assert_eq!(expected, out, "multiply_bins != scalar (mvl={mvl})");
+        }
     }
 
     /// The scalar path is the source of truth. Every SIMD path — and the

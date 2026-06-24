@@ -81,10 +81,11 @@ pub(crate) fn mayo_verify<P: MayoParameter>(msg: &[u8], sig: &[u8], cpk: &[u8]) 
     mayo_verify_with_expanded_pk_and_scratch::<P>(msg, sig, &pk, &p3, &mut scratch)
 }
 
-pub(crate) fn mayo_verify_with_expanded_pk_and_scratch<P: MayoParameter>(
+pub(crate) fn mayo_verify_split_with_scratch<P: MayoParameter>(
     msg: &[u8],
     sig: &[u8],
-    pk: &[u64],
+    p1: &[u64],
+    p2: &[u64],
     p3: &[u64],
     scratch: &mut VerifyScratch,
 ) -> Result<()> {
@@ -95,8 +96,6 @@ pub(crate) fn mayo_verify_with_expanded_pk_and_scratch<P: MayoParameter>(
     let param_sig_bytes = P::SIG_BYTES;
     let param_digest_bytes = P::DIGEST_BYTES;
     let param_salt_bytes = P::SALT_BYTES;
-    let p1 = &pk[..P::P1_LIMBS];
-    let p2 = &pk[P::P1_LIMBS..P::P1_LIMBS + P::P2_LIMBS];
     let VerifyScratch {
         ps_sps,
         sps,
@@ -152,6 +151,18 @@ pub(crate) fn mayo_verify_with_expanded_pk_and_scratch<P: MayoParameter>(
     }
 }
 
+pub(crate) fn mayo_verify_with_expanded_pk_and_scratch<P: MayoParameter>(
+    msg: &[u8],
+    sig: &[u8],
+    pk: &[u64],
+    p3: &[u64],
+    scratch: &mut VerifyScratch,
+) -> Result<()> {
+    let p1 = &pk[..P::P1_LIMBS];
+    let p2 = &pk[P::P1_LIMBS..P::P1_LIMBS + P::P2_LIMBS];
+    mayo_verify_split_with_scratch::<P>(msg, sig, p1, p2, p3, scratch)
+}
+
 pub(crate) fn mayo_verify_with_expanded_pk<P: MayoParameter>(
     msg: &[u8],
     sig: &[u8],
@@ -160,4 +171,20 @@ pub(crate) fn mayo_verify_with_expanded_pk<P: MayoParameter>(
 ) -> Result<()> {
     let mut scratch = VerifyScratch::new::<P>();
     mayo_verify_with_expanded_pk_and_scratch::<P>(msg, sig, pk, p3, &mut scratch)
+}
+
+/// Verify a signature with P1, P2, and P3 supplied as separate (non-contiguous)
+/// slices, allocating a fresh verification scratch.
+///
+/// Used by the verify-after-sign fault check, which reuses the public P1/P2 it
+/// already expanded for signing instead of re-expanding them.
+pub(crate) fn mayo_verify_with_split_pk<P: MayoParameter>(
+    msg: &[u8],
+    sig: &[u8],
+    p1: &[u64],
+    p2: &[u64],
+    p3: &[u64],
+) -> Result<()> {
+    let mut scratch = VerifyScratch::new::<P>();
+    mayo_verify_split_with_scratch::<P>(msg, sig, p1, p2, p3, &mut scratch)
 }

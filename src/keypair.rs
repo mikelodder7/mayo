@@ -19,11 +19,6 @@ pub struct KeyPair<P: MayoParameter> {
     verifying_key: VerifyingKey<P>,
 }
 
-pub(crate) struct DerivedPublicKey {
-    pub(crate) expanded_pk: Vec<u64>,
-    pub(crate) p3: Vec<u64>,
-}
-
 impl<P: MayoParameter> AsRef<VerifyingKey<P>> for KeyPair<P> {
     fn as_ref(&self) -> &VerifyingKey<P> {
         &self.verifying_key
@@ -124,13 +119,6 @@ impl<P: MayoParameter> KeyPair<P> {
 
 /// Derive the compact public key from a compact secret key.
 pub(crate) fn derive_cpk_from_csk<P: MayoParameter>(csk: &[u8], cpk: &mut [u8]) {
-    let _ = derive_cpk_and_expanded_from_csk::<P>(csk, cpk);
-}
-
-pub(crate) fn derive_cpk_and_expanded_from_csk<P: MayoParameter>(
-    csk: &[u8],
-    cpk: &mut [u8],
-) -> DerivedPublicKey {
     use crate::codec::{decode, pack_m_vecs};
     use crate::keygen::expand_p1_p2;
     use crate::matrix_ops::{compute_p3, m_upper};
@@ -186,9 +174,4 @@ pub(crate) fn derive_cpk_and_expanded_from_csk<P: MayoParameter>(
         param_p3_limbs / m_vec_limbs,
         param_m,
     );
-
-    DerivedPublicKey {
-        expanded_pk: p,
-        p3: p3_upper,
-    }
 }

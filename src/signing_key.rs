@@ -27,6 +27,7 @@ pub struct SigningKey<P: MayoParameter> {
 pub struct ExpandedSigningKey<P: MayoParameter> {
     bytes: Array<u8, P::CskSize>,
     p: Zeroizing<Vec<u64>>,
+    p2: Vec<u64>,
     o: Zeroizing<Vec<u8>>,
 }
 
@@ -48,6 +49,7 @@ impl<P: MayoParameter> Zeroize for ExpandedSigningKey<P> {
     fn zeroize(&mut self) {
         self.bytes.zeroize();
         self.p.zeroize();
+        self.p2.zeroize();
         self.o.zeroize();
     }
 }
@@ -182,6 +184,7 @@ impl<P: MayoParameter> ExpandedSigningKey<P> {
             msg,
             &self.bytes,
             &self.p,
+            &self.p2,
             &self.o,
             rng,
         )?;
@@ -191,11 +194,12 @@ impl<P: MayoParameter> ExpandedSigningKey<P> {
 
 impl<P: MayoParameter> From<&SigningKey<P>> for ExpandedSigningKey<P> {
     fn from(signing_key: &SigningKey<P>) -> Self {
-        let (p, o) = expand_sk::<P>(&signing_key.bytes);
+        let esk = expand_sk::<P>(&signing_key.bytes);
         Self {
             bytes: signing_key.bytes.clone(),
-            p,
-            o,
+            p: esk.p1_l,
+            p2: esk.p2,
+            o: esk.o,
         }
     }
 }
@@ -219,6 +223,7 @@ impl<P: MayoParameter> signature::Signer<Signature<P>> for ExpandedSigningKey<P>
             msg,
             &self.bytes,
             &self.p,
+            &self.p2,
             &self.o,
             &mut rng,
         )
