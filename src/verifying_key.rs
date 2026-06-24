@@ -6,7 +6,10 @@ use crate::error::Error;
 use crate::mayo_signature::Signature;
 use crate::params::MayoParameter;
 use crate::signing_key::SigningKey;
-use crate::verify::{expand_public_key, mayo_verify, mayo_verify_with_expanded_pk};
+use crate::verify::{
+    VerifyScratch, expand_public_key, mayo_verify, mayo_verify_with_expanded_pk,
+    mayo_verify_with_expanded_pk_and_scratch,
+};
 use core::marker::PhantomData;
 
 /// A MAYO verifying key (compact public key).
@@ -127,6 +130,15 @@ pub struct ExpandedVerifyingKey<P: MayoParameter> {
     _marker: PhantomData<P>,
 }
 
+/// A reusable MAYO verification context.
+///
+/// This stores an expanded verifying key plus mutable scratch buffers for
+/// repeated verification with the same public key.
+pub struct VerificationContext<P: MayoParameter> {
+    key: ExpandedVerifyingKey<P>,
+    scratch: VerifyScratch,
+}
+
 impl<P: MayoParameter> AsRef<[u8]> for ExpandedVerifyingKey<P> {
     fn as_ref(&self) -> &[u8] {
         &self.bytes
@@ -191,12 +203,29 @@ impl<P: MayoParameter> PartialEq for ExpandedVerifyingKey<P> {
 
 impl<P: MayoParameter> Eq for ExpandedVerifyingKey<P> {}
 
+impl<P: MayoParameter> PartialEq for VerificationContext<P> {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key
+    }
+}
+
+impl<P: MayoParameter> Eq for VerificationContext<P> {}
+
 impl<P: MayoParameter> core::fmt::Debug for ExpandedVerifyingKey<P> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ExpandedVerifyingKey")
             .field("variant", &P::NAME)
             .field("bytes", &hex::encode(&self.bytes))
             .finish()
+    }
+}
+
+impl<P: MayoParameter> core::fmt::Debug for VerificationContext<P> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("VerificationContext")
+            .field("variant", &P::NAME)
+            .field("key", &self.key)
+            .finish_non_exhaustive()
     }
 }
 
@@ -221,6 +250,45 @@ impl<P: MayoParameter> ExpandedVerifyingKey<P> {
     /// Return the compact verifying key form.
     pub fn compact(&self) -> VerifyingKey<P> {
         VerifyingKey::from_bytes_unchecked(self.bytes.clone())
+    }
+
+    /// Create a reusable verification context for this expanded key.
+    pub fn context(&self) -> VerificationContext<P> {
+        VerificationContext::from(self)
+    }
+}
+
+impl<P: MayoParameter> VerificationContext<P> {
+    /// Verify a signature using cached expanded public material and scratch buffers.
+    pub fn verify(&mut self, msg: &[u8], signature: &Signature<P>) -> Result<(), signature::Error> {
+        mayo_verify_with_expanded_pk_and_scratch::<P>(
+            msg,
+            signature.as_ref(),
+            &self.key.expanded_pk,
+            &self.key.p3,
+            &mut self.scratch,
+        )
+        .map_err(Into::into)
+    }
+
+    /// Return the expanded verifying key backing this context.
+    pub fn verifying_key(&self) -> &ExpandedVerifyingKey<P> {
+        &self.key
+    }
+}
+
+impl<P: MayoParameter> From<&ExpandedVerifyingKey<P>> for VerificationContext<P> {
+    fn from(key: &ExpandedVerifyingKey<P>) -> Self {
+        Self {
+            key: key.clone(),
+            scratch: VerifyScratch::new::<P>(),
+        }
+    }
+}
+
+impl<P: MayoParameter> From<&VerifyingKey<P>> for VerificationContext<P> {
+    fn from(key: &VerifyingKey<P>) -> Self {
+        Self::from(&key.expand())
     }
 }
 

@@ -1,7 +1,8 @@
 //! Basic sign/verify roundtrip tests.
 
 use pq_mayo::{
-    ExpandedSigningKey, ExpandedVerifyingKey, KeyPair, Mayo1, Mayo2, Mayo3, Mayo5, VerifyingKey,
+    ExpandedSigningKey, ExpandedVerifyingKey, KeyPair, Mayo1, Mayo2, Mayo3, Mayo5,
+    VerificationContext, VerifyingKey,
 };
 use signature::{Signer, Verifier};
 
@@ -140,4 +141,21 @@ fn expanded_signing_key_mayo1() {
         .verifying_key()
         .verify(msg.as_slice(), &sig)
         .expect("verification failed");
+}
+
+#[test]
+fn verification_context_mayo1() {
+    let mut rng = rand::rng();
+    let keypair = KeyPair::<Mayo1>::generate(&mut rng).expect("keygen failed");
+    let expanded = ExpandedVerifyingKey::<Mayo1>::from(keypair.verifying_key());
+    let mut context = VerificationContext::<Mayo1>::from(&expanded);
+    let msg = b"verification context test";
+
+    let sig = keypair
+        .signing_key()
+        .try_sign(msg.as_slice())
+        .expect("signing failed");
+    context
+        .verify(msg.as_slice(), &sig)
+        .expect("context verification failed");
 }

@@ -5,6 +5,7 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use pq_mayo::{
     ExpandedSigningKey, ExpandedVerifyingKey, KeyPair, Mayo1, Mayo2, Mayo3, Mayo5, MayoParameter,
+    VerificationContext,
 };
 use signature::{Signer, Verifier};
 
@@ -59,12 +60,26 @@ fn bench_verify_expanded<P: MayoParameter>(c: &mut Criterion) {
     });
 }
 
+fn bench_verify_context<P: MayoParameter>(c: &mut Criterion) {
+    let mut rng = rand::rng();
+    let keypair = KeyPair::<P>::generate(&mut rng).expect("keygen");
+    let expanded = ExpandedVerifyingKey::<P>::from(keypair.verifying_key());
+    let mut context = VerificationContext::<P>::from(&expanded);
+    let msg = b"benchmark message for verify";
+    let sig = keypair.signing_key().try_sign(msg).expect("sign");
+
+    c.bench_function(&format!("{}/verify-context", P::NAME), |b| {
+        b.iter(|| context.verify(msg, &sig).expect("verify"));
+    });
+}
+
 fn mayo1_benches(c: &mut Criterion) {
     bench_keygen::<Mayo1>(c);
     bench_sign::<Mayo1>(c);
     bench_sign_expanded::<Mayo1>(c);
     bench_verify::<Mayo1>(c);
     bench_verify_expanded::<Mayo1>(c);
+    bench_verify_context::<Mayo1>(c);
 }
 
 fn mayo2_benches(c: &mut Criterion) {
@@ -73,6 +88,7 @@ fn mayo2_benches(c: &mut Criterion) {
     bench_sign_expanded::<Mayo2>(c);
     bench_verify::<Mayo2>(c);
     bench_verify_expanded::<Mayo2>(c);
+    bench_verify_context::<Mayo2>(c);
 }
 
 fn mayo3_benches(c: &mut Criterion) {
@@ -81,6 +97,7 @@ fn mayo3_benches(c: &mut Criterion) {
     bench_sign_expanded::<Mayo3>(c);
     bench_verify::<Mayo3>(c);
     bench_verify_expanded::<Mayo3>(c);
+    bench_verify_context::<Mayo3>(c);
 }
 
 fn mayo5_benches(c: &mut Criterion) {
@@ -89,6 +106,7 @@ fn mayo5_benches(c: &mut Criterion) {
     bench_sign_expanded::<Mayo5>(c);
     bench_verify::<Mayo5>(c);
     bench_verify_expanded::<Mayo5>(c);
+    bench_verify_context::<Mayo5>(c);
 }
 
 criterion_group!(

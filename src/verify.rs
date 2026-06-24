@@ -81,7 +81,7 @@ pub(crate) fn mayo_verify<P: MayoParameter>(msg: &[u8], sig: &[u8], cpk: &[u8]) 
     mayo_verify_with_expanded_pk_and_scratch::<P>(msg, sig, &pk, &p3, &mut scratch)
 }
 
-fn mayo_verify_with_expanded_pk_and_scratch<P: MayoParameter>(
+pub(crate) fn mayo_verify_with_expanded_pk_and_scratch<P: MayoParameter>(
     msg: &[u8],
     sig: &[u8],
     pk: &[u64],

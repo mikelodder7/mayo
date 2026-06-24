@@ -259,7 +259,7 @@ pub use keypair::KeyPair;
 pub use mayo_signature::Signature;
 pub use params::{Mayo1, Mayo2, Mayo3, Mayo5, MayoParameter};
 pub use signing_key::{ExpandedSigningKey, SigningKey};
-pub use verifying_key::{ExpandedVerifyingKey, VerifyingKey};
+pub use verifying_key::{ExpandedVerifyingKey, VerificationContext, VerifyingKey};
 
 #[cfg(feature = "pkcs8")]
 pub use crate::pkcs8::{MAYO1_OID, MAYO2_OID, MAYO3_OID, MAYO5_OID};
