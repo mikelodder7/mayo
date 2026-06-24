@@ -36,14 +36,18 @@ expanded/context types when repeatedly signing or verifying with the same key.
 
 | Operation | Compact | Expanded | Context |
 |-----------|---------|----------|---------|
-| Mayo1/sign | 1.17 ms | 787 µs | - |
-| Mayo2/sign | 1.22 ms | 675 µs | - |
-| Mayo3/sign | 3.09 ms | 2.00 ms | - |
-| Mayo5/sign | 7.19 ms | 4.48 ms | - |
-| Mayo1/verify | 202 µs | 125 µs | 118 µs |
-| Mayo2/verify | 101 µs | 41 µs | 38 µs |
-| Mayo3/verify | 431 µs | 276 µs | 257 µs |
-| Mayo5/verify | 763 µs | 460 µs | 441 µs |
+| Mayo1/keygen | 148 µs | - | - |
+| Mayo2/keygen | 207 µs | - | - |
+| Mayo3/keygen | 384 µs | - | - |
+| Mayo5/keygen | 848 µs | - | - |
+| Mayo1/sign | 526 µs | 344 µs | - |
+| Mayo2/sign | 489 µs | 241 µs | - |
+| Mayo3/sign | 1.23 ms | 734 µs | - |
+| Mayo5/sign | 2.69 ms | 1.56 ms | - |
+| Mayo1/verify | 128 µs | 98.3 µs | 91.5 µs |
+| Mayo2/verify | 64.6 µs | 31.3 µs | 28.1 µs |
+| Mayo3/verify | 288 µs | 203 µs | 192 µs |
+| Mayo5/verify | 608 µs | 418 µs | 402 µs |
 
 ### Linux (`x86_64-unknown-linux-gnu`)
 
