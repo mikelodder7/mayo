@@ -178,7 +178,7 @@ pub(crate) fn derive_cpk_and_expanded_from_csk<P: MayoParameter>(
     cpk[..param_pk_seed_bytes].copy_from_slice(seed_pk);
 
     // Upper(P3) -> pack into cpk
-    let mut p3_upper = Zeroizing::new(vec![0u64; param_p3_limbs]);
+    let mut p3_upper = vec![0u64; param_p3_limbs];
     m_upper(m_vec_limbs, &p3, &mut p3_upper, param_o);
     pack_m_vecs(
         &p3_upper,
@@ -189,6 +189,6 @@ pub(crate) fn derive_cpk_and_expanded_from_csk<P: MayoParameter>(
 
     DerivedPublicKey {
         expanded_pk: p,
-        p3: p3_upper.to_vec(),
+        p3: p3_upper,
     }
 }

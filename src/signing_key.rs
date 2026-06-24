@@ -6,15 +6,28 @@ use crate::error::Error;
 use crate::keypair::derive_cpk_from_csk;
 use crate::mayo_signature::Signature;
 use crate::params::MayoParameter;
-use crate::sign::mayo_sign_signature;
+use crate::sign::{expand_sk, mayo_sign_signature, mayo_sign_signature_with_expanded_sk};
 use hybrid_array::Array;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 /// A MAYO signing key (compact secret key = seed).
 #[derive(Clone)]
 pub struct SigningKey<P: MayoParameter> {
     pub(crate) bytes: Array<u8, P::CskSize>,
     pub(crate) cpk: Vec<u8>,
+}
+
+/// A MAYO signing key with cached expanded secret material.
+///
+/// This type is intended for repeated signing with the same key. It keeps the
+/// compact secret key for the signing fault check and also stores expanded
+/// secret-derived matrices, so it uses more memory and retains more sensitive
+/// material than [`SigningKey`].
+#[derive(Clone)]
+pub struct ExpandedSigningKey<P: MayoParameter> {
+    bytes: Array<u8, P::CskSize>,
+    p: Zeroizing<Vec<u64>>,
+    o: Zeroizing<Vec<u8>>,
 }
 
 impl<P: MayoParameter> Zeroize for SigningKey<P> {
@@ -30,6 +43,28 @@ impl<P: MayoParameter> Drop for SigningKey<P> {
 }
 
 impl<P: MayoParameter> ZeroizeOnDrop for SigningKey<P> {}
+
+impl<P: MayoParameter> Zeroize for ExpandedSigningKey<P> {
+    fn zeroize(&mut self) {
+        self.bytes.zeroize();
+        self.p.zeroize();
+        self.o.zeroize();
+    }
+}
+
+impl<P: MayoParameter> Drop for ExpandedSigningKey<P> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl<P: MayoParameter> ZeroizeOnDrop for ExpandedSigningKey<P> {}
+
+impl<P: MayoParameter> AsRef<[u8]> for ExpandedSigningKey<P> {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
+}
 
 impl<P: MayoParameter> AsRef<[u8]> for SigningKey<P> {
     fn as_ref(&self) -> &[u8] {
@@ -84,6 +119,14 @@ impl<P: MayoParameter> PartialEq for SigningKey<P> {
 
 impl<P: MayoParameter> Eq for SigningKey<P> {}
 
+impl<P: MayoParameter> PartialEq for ExpandedSigningKey<P> {
+    fn eq(&self, other: &Self) -> bool {
+        self.bytes == other.bytes
+    }
+}
+
+impl<P: MayoParameter> Eq for ExpandedSigningKey<P> {}
+
 impl<P: MayoParameter> core::fmt::Debug for SigningKey<P> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SigningKey")
@@ -93,7 +136,25 @@ impl<P: MayoParameter> core::fmt::Debug for SigningKey<P> {
     }
 }
 
+impl<P: MayoParameter> core::fmt::Debug for ExpandedSigningKey<P> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ExpandedSigningKey")
+            .field("variant", &P::NAME)
+            .field("bytes", &"**FILTERED**")
+            .field("expanded", &"**FILTERED**")
+            .finish_non_exhaustive()
+    }
+}
+
 impl<P: MayoParameter> SigningKey<P> {
+    /// Expand this signing key for repeated signing.
+    ///
+    /// The returned key caches secret-derived signing material. Prefer the
+    /// compact [`SigningKey`] unless repeated signing throughput matters.
+    pub fn expand(&self) -> ExpandedSigningKey<P> {
+        ExpandedSigningKey::from(self)
+    }
+
     /// Sign a message using a caller-provided RNG for salt generation.
     ///
     /// This is useful for deterministic testing with a seeded RNG.
@@ -108,12 +169,60 @@ impl<P: MayoParameter> SigningKey<P> {
     }
 }
 
+impl<P: MayoParameter> ExpandedSigningKey<P> {
+    /// Sign a message using a caller-provided RNG for salt generation.
+    pub fn sign_with_rng(
+        &self,
+        rng: &mut impl rand::CryptoRng,
+        msg: &[u8],
+    ) -> crate::error::Result<Signature<P>> {
+        let mut sig_bytes = vec![0u8; P::SIG_BYTES];
+        mayo_sign_signature_with_expanded_sk::<P>(
+            &mut sig_bytes,
+            msg,
+            &self.bytes,
+            &self.p,
+            &self.o,
+            rng,
+        )?;
+        Signature::try_from(sig_bytes)
+    }
+}
+
+impl<P: MayoParameter> From<&SigningKey<P>> for ExpandedSigningKey<P> {
+    fn from(signing_key: &SigningKey<P>) -> Self {
+        let (p, o) = expand_sk::<P>(&signing_key.bytes);
+        Self {
+            bytes: signing_key.bytes.clone(),
+            p,
+            o,
+        }
+    }
+}
+
 impl<P: MayoParameter> signature::Signer<Signature<P>> for SigningKey<P> {
     fn try_sign(&self, msg: &[u8]) -> Result<Signature<P>, signature::Error> {
         let mut sig_bytes = vec![0u8; P::SIG_BYTES];
         let mut rng = rand::rng();
         mayo_sign_signature::<P>(&mut sig_bytes, msg, &self.bytes, &mut rng)
             .map_err(|e| -> signature::Error { e.into() })?;
+        Signature::try_from(sig_bytes).map_err(|e| -> signature::Error { e.into() })
+    }
+}
+
+impl<P: MayoParameter> signature::Signer<Signature<P>> for ExpandedSigningKey<P> {
+    fn try_sign(&self, msg: &[u8]) -> Result<Signature<P>, signature::Error> {
+        let mut sig_bytes = vec![0u8; P::SIG_BYTES];
+        let mut rng = rand::rng();
+        mayo_sign_signature_with_expanded_sk::<P>(
+            &mut sig_bytes,
+            msg,
+            &self.bytes,
+            &self.p,
+            &self.o,
+            &mut rng,
+        )
+        .map_err(|e| -> signature::Error { e.into() })?;
         Signature::try_from(sig_bytes).map_err(|e| -> signature::Error { e.into() })
     }
 }

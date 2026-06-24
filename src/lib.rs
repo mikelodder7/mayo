@@ -258,7 +258,7 @@ pub use error::{Error, Result};
 pub use keypair::KeyPair;
 pub use mayo_signature::Signature;
 pub use params::{Mayo1, Mayo2, Mayo3, Mayo5, MayoParameter};
-pub use signing_key::SigningKey;
+pub use signing_key::{ExpandedSigningKey, SigningKey};
 pub use verifying_key::{ExpandedVerifyingKey, VerifyingKey};
 
 #[cfg(feature = "pkcs8")]

@@ -90,12 +90,3 @@ pub(crate) fn mat_mul(
         }
     }
 }
-
-/// Matrix add: c = a + b, where both are m x n.
-pub(crate) fn mat_add(a: &[u8], b: &[u8], c: &mut [u8], m: usize, n: usize) {
-    for i in 0..m {
-        for j in 0..n {
-            c[i * n + j] = add_f(a[i * n + j], b[i * n + j]);
-        }
-    }
-}

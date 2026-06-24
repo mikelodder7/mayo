@@ -4,7 +4,7 @@
 
 use crate::codec::{decode, encode};
 use crate::error::{Error, Result};
-use crate::gf16::{mat_add, mat_mul, mul_f};
+use crate::gf16::{add_f, mul_f};
 use crate::keygen::expand_p1_p2;
 use crate::keypair::derive_cpk_and_expanded_from_csk;
 use crate::matrix_ops::{compute_m_and_vpv, p1p1t_times_o};
@@ -17,7 +17,7 @@ use shake::digest::{ExtendableOutput, Update, XofReader};
 use zeroize::Zeroizing;
 
 /// Expand a compact secret key into P1, L (=(P1+P1^t)*O + P2), and O.
-fn expand_sk<P: MayoParameter>(csk: &[u8]) -> (Zeroizing<Vec<u64>>, Zeroizing<Vec<u8>>) {
+pub(crate) fn expand_sk<P: MayoParameter>(csk: &[u8]) -> (Zeroizing<Vec<u64>>, Zeroizing<Vec<u8>>) {
     let param_o = P::O;
     let param_v = P::V;
     let param_o_bytes = P::O_BYTES;
@@ -325,6 +325,18 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
     csk: &[u8],
     rng: &mut impl CryptoRng,
 ) -> Result<usize> {
+    let (p, o_mat) = expand_sk::<P>(csk);
+    mayo_sign_signature_with_expanded_sk::<P>(sig, msg, csk, &p, &o_mat, rng)
+}
+
+pub(crate) fn mayo_sign_signature_with_expanded_sk<P: MayoParameter>(
+    sig: &mut [u8],
+    msg: &[u8],
+    csk: &[u8],
+    p: &[u64],
+    o_mat: &[u8],
+    rng: &mut impl CryptoRng,
+) -> Result<usize> {
     let param_m = P::M;
     let param_n = P::N;
     let param_o = P::O;
@@ -338,9 +350,6 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
     let param_digest_bytes = P::DIGEST_BYTES;
     let param_sk_seed_bytes = P::SK_SEED_BYTES;
     let param_salt_bytes = P::SALT_BYTES;
-
-    // Expand secret key
-    let (p, o_mat) = expand_sk::<P>(csk);
 
     let seed_sk = &csk[..param_sk_seed_bytes];
 
@@ -384,7 +393,7 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
     }
     decode(&tenc, &mut t, param_m);
 
-    let mut x = Zeroizing::new(vec![0u8; param_k * param_n]);
+    let mut x = Zeroizing::new(vec![0u8; param_a_cols]);
     let mut s = vec![0u8; param_k * param_n];
     let mut vdec = Zeroizing::new(vec![0u8; param_v * param_k]);
 
@@ -399,7 +408,6 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
     let mut a_matrix = Zeroizing::new(vec![0u8; a_row_size * param_a_cols]);
     let a_width = (param_o * param_k).div_ceil(16) * 16;
     let mut a_scratch = vec![0u64; a_width * param_m.div_ceil(8)];
-    let mut r = Zeroizing::new(vec![0u8; param_k * param_o + 1]);
 
     for ctr in 0..=255u8 {
         // Generate V and r using incremental hashing.
@@ -441,18 +449,17 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
             a_matrix[(1 + i) * param_a_cols - 1] = 0;
         }
 
-        // Decode r
-        r.fill(0);
+        // Decode r directly into x; sample_solution updates it in place.
+        x.fill(0);
         decode(
             &v_and_r[param_k * param_v_bytes..],
-            &mut r,
+            &mut x,
             param_k * param_o,
         );
 
         if sample_solution(SampleSolutionArgs {
             a: &mut a_matrix,
             y: &y,
-            r: &r,
             x: &mut x,
             k: param_k,
             o: param_o,
@@ -464,15 +471,18 @@ pub(crate) fn mayo_sign_signature<P: MayoParameter>(
     }
 
     // Compute s[i] = v[i] + O*x[i]
-    let mut ox = Zeroizing::new(vec![0u8; param_v]);
     for i in 0..param_k {
         let vi = &vdec[i * param_v..(i + 1) * param_v];
         let xi = &x[i * param_o..(i + 1) * param_o];
-        ox.fill(0);
-        mat_mul(&o_mat, xi, &mut ox, param_o, param_v, 1);
-        mat_add(vi, &ox, &mut s[i * param_n..], param_v, 1);
-        s[i * param_n + param_v..i * param_n + param_n]
-            .copy_from_slice(&x[i * param_o..(i + 1) * param_o]);
+        let si = &mut s[i * param_n..(i + 1) * param_n];
+        for row in 0..param_v {
+            let mut acc = vi[row];
+            for col in 0..param_o {
+                acc = add_f(acc, mul_f(o_mat[row * param_o + col], xi[col]));
+            }
+            si[row] = acc;
+        }
+        si[param_v..param_n].copy_from_slice(xi);
     }
 
     encode(&s, sig, param_n * param_k);

@@ -9,13 +9,12 @@ use crate::gf16::{mat_mul, mul_fx8, sub_f};
 ///
 /// - `a` is an `m x a_cols` matrix (last column will be overwritten with y - Ar)
 /// - `y` is a vector with `m` elements
-/// - `r` and `x` are `k*o` bytes long
+/// - `x` has `a_cols` bytes, is prefilled with the random `r`, and has a zero sentinel
 ///
 /// Returns `true` on success, `false` if the system is singular.
 pub(crate) struct SampleSolutionArgs<'a> {
     pub(crate) a: &'a mut [u8],
     pub(crate) y: &'a [u8],
-    pub(crate) r: &'a [u8],
     pub(crate) x: &'a mut [u8],
     pub(crate) k: usize,
     pub(crate) o: usize,
@@ -27,7 +26,6 @@ pub(crate) fn sample_solution(args: SampleSolutionArgs<'_>) -> bool {
     let SampleSolutionArgs {
         a,
         y,
-        r,
         x,
         k,
         o,
@@ -37,16 +35,13 @@ pub(crate) fn sample_solution(args: SampleSolutionArgs<'_>) -> bool {
 
     let ko = k * o;
 
-    // x <- r
-    x[..ko].copy_from_slice(&r[..ko]);
-
     // Compute Ar
     let mut ar = vec![0u8; m];
     // Clear last column of A
     for i in 0..m {
         a[ko + i * a_cols] = 0;
     }
-    mat_mul(a, r, &mut ar, a_cols, m, 1);
+    mat_mul(a, x, &mut ar, a_cols, m, 1);
 
     // Move y - Ar to last column of matrix A
     for i in 0..m {
