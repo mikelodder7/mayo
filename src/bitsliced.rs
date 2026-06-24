@@ -520,7 +520,15 @@ mod tests {
 
             println!("\nm_vec_mul_add timing (legs={legs}, {iters} iters):");
             let src_s = src.clone();
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             let scalar = time(
+                "scalar",
+                Box::new(move |acc| {
+                    m_vec_mul_add_scalar(black_box(&src_s), black_box(a), acc, legs)
+                }),
+            );
+            #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+            let _ = time(
                 "scalar",
                 Box::new(move |acc| {
                     m_vec_mul_add_scalar(black_box(&src_s), black_box(a), acc, legs)
