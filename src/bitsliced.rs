@@ -16,13 +16,42 @@ const MASK_MSB: u64 = 0x8888888888888888;
 
 /// Add an m-vector: `acc ^= src`.
 ///
-/// On aarch64 the XOR is done two `u64` limbs at a time via NEON; MAYO's
-/// `m_vec_limbs` (4–9) leaves at most one scalar-handled tail limb. This is the
-/// hottest primitive in the bin-accumulator matmuls, called O(V²·K) times per
-/// signature.
-#[cfg(target_arch = "aarch64")]
+/// This is the hottest primitive in the bin-accumulator matmuls, called O(V²·K)
+/// times per signature, always at a length equal to the parameter set's
+/// (compile-time) `M_VEC_LIMBS` ∈ {4,5,7,9}. The length is threaded as a runtime
+/// `usize` through the matmul call chain, so the per-arch SIMD loops below can't
+/// see it. This dispatcher recovers that constant: it matches the known MAYO
+/// lengths and forwards to a fully-unrolled const-generic body, letting the
+/// optimizer drop the loop counter, the bounds re-slice, and emit straight-line
+/// (auto-vectorized) XORs. Non-MAYO lengths fall back to the dynamic SIMD path.
 #[inline]
 pub(crate) fn m_vec_add(src: &[u64], acc: &mut [u64], m_vec_limbs: usize) {
+    match m_vec_limbs {
+        4 => m_vec_add_n::<4>(src, acc),
+        5 => m_vec_add_n::<5>(src, acc),
+        7 => m_vec_add_n::<7>(src, acc),
+        9 => m_vec_add_n::<9>(src, acc),
+        _ => m_vec_add_dyn(src, acc, m_vec_limbs),
+    }
+}
+
+/// Fully-unrolled `acc ^= src` for a compile-time length. With `N` const the
+/// loop unrolls to `N` straight-line XORs and LLVM auto-vectorizes them; the
+/// `[..N]` reslices give the optimizer a provable length so the per-element
+/// bounds checks fold away.
+#[inline(always)]
+fn m_vec_add_n<const N: usize>(src: &[u64], acc: &mut [u64]) {
+    let src = &src[..N];
+    let acc = &mut acc[..N];
+    for i in 0..N {
+        acc[i] ^= src[i];
+    }
+}
+
+/// Dynamic-length `acc ^= src` (non-MAYO lengths and the scalar-only targets).
+#[cfg(target_arch = "aarch64")]
+#[inline]
+fn m_vec_add_dyn(src: &[u64], acc: &mut [u64], m_vec_limbs: usize) {
     use std::arch::aarch64::*;
 
     let src = &src[..m_vec_limbs];
@@ -43,16 +72,12 @@ pub(crate) fn m_vec_add(src: &[u64], acc: &mut [u64], m_vec_limbs: usize) {
     }
 }
 
-/// Add an m-vector: `acc ^= src`.
-///
-/// On x86_64 the XOR is done two `u64` limbs at a time via SSE2, which is part
-/// of the x86_64 baseline ISA (no runtime feature check, so nothing branches in
-/// this per-call-millions hot loop). The op is a plain XOR with no byte shuffle,
-/// so SSSE3/AVX2 would only widen 2→4 limbs for 4–9-limb vectors — not worth a
-/// per-call `is_x86_feature_detected!` branch here.
+/// Dynamic-length `acc ^= src` on x86_64: two `u64` limbs per SSE2 op (baseline
+/// ISA, no feature branch). Reached only for non-MAYO lengths; the MAYO lengths
+/// take the const-generic unrolled path in [`m_vec_add`].
 #[cfg(target_arch = "x86_64")]
 #[inline]
-pub(crate) fn m_vec_add(src: &[u64], acc: &mut [u64], m_vec_limbs: usize) {
+fn m_vec_add_dyn(src: &[u64], acc: &mut [u64], m_vec_limbs: usize) {
     use std::arch::x86_64::*;
 
     let src = &src[..m_vec_limbs];
@@ -73,10 +98,10 @@ pub(crate) fn m_vec_add(src: &[u64], acc: &mut [u64], m_vec_limbs: usize) {
     }
 }
 
-/// Add an m-vector: `acc ^= src` (scalar fallback for non-SIMD targets).
+/// Dynamic-length `acc ^= src` (scalar fallback for non-SIMD targets).
 #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 #[inline]
-pub(crate) fn m_vec_add(src: &[u64], acc: &mut [u64], m_vec_limbs: usize) {
+fn m_vec_add_dyn(src: &[u64], acc: &mut [u64], m_vec_limbs: usize) {
     for i in 0..m_vec_limbs {
         acc[i] ^= src[i];
     }
@@ -95,6 +120,28 @@ fn m_vec_mul_add_scalar(src: &[u64], a: u8, acc: &mut [u64], legs: usize) {
     let t3 = u64::from((tab >> 24) & 0xf);
 
     for i in 0..legs {
+        acc[i] ^= (src[i] & MASK_LSB).wrapping_mul(t0)
+            ^ ((src[i] >> 1) & MASK_LSB).wrapping_mul(t1)
+            ^ ((src[i] >> 2) & MASK_LSB).wrapping_mul(t2)
+            ^ ((src[i] >> 3) & MASK_LSB).wrapping_mul(t3);
+    }
+}
+
+/// Const-length scalar GF(16) multiply-accumulate (keygen's `m_vec_mul_add`
+/// path). With `N` const the body unrolls and the bounds re-slice folds away —
+/// the same constant-length recovery that `m_vec_add` uses, here for the LUT
+/// multiply that the bin-accumulator deliberately avoids.
+#[inline(always)]
+fn m_vec_mul_add_scalar_n<const N: usize>(src: &[u64], a: u8, acc: &mut [u64]) {
+    let tab = mul_table(a);
+    let t0 = u64::from(tab & 0xff);
+    let t1 = u64::from((tab >> 8) & 0xf);
+    let t2 = u64::from((tab >> 16) & 0xf);
+    let t3 = u64::from((tab >> 24) & 0xf);
+
+    let src = &src[..N];
+    let acc = &mut acc[..N];
+    for i in 0..N {
         acc[i] ^= (src[i] & MASK_LSB).wrapping_mul(t0)
             ^ ((src[i] >> 1) & MASK_LSB).wrapping_mul(t1)
             ^ ((src[i] >> 2) & MASK_LSB).wrapping_mul(t2)
@@ -404,12 +451,33 @@ fn dispatch_mul_add(src: &[u64], a: u8, acc: &mut [u64], legs: usize) {
     m_vec_mul_add_scalar(src, a, acc, legs)
 }
 
+/// Multiply-accumulate: `acc += src * a` where `a` is a GF(16) scalar.
+#[inline]
+pub(crate) fn m_vec_mul_add(src: &[u64], a: u8, acc: &mut [u64], m_vec_limbs: usize) {
+    // Re-slice to the exact length so a too-short slice panics here (safe) rather
+    // than reaching the raw-pointer SIMD kernels, where `legs * 8` byte offsets
+    // would be out-of-bounds UB. One bounds check per call — negligible beside
+    // the kernel work, and it lets the optimizer prove the SIMD accesses in-range.
+    let src = &src[..m_vec_limbs];
+    let acc = &mut acc[..m_vec_limbs];
+    // MAYO calls this at a compile-time `M_VEC_LIMBS` ∈ {4,5,7,9}, all below
+    // `SIMD_MIN_LIMBS`, so the dispatcher would pick the scalar path anyway —
+    // route straight to the unrolled const-length scalar kernel.
+    // Const arms for mvl 4/5/7 only: benchmarking showed the unrolled kernel wins
+    // there (keygen −2% to −10.5%) but *pessimizes* mvl=9 (MAYO_5, +3–5%), so the
+    // 9-limb case keeps the original dynamic path.
+    match m_vec_limbs {
+        4 => m_vec_mul_add_scalar_n::<4>(src, a, acc),
+        5 => m_vec_mul_add_scalar_n::<5>(src, a, acc),
+        7 => m_vec_mul_add_scalar_n::<7>(src, a, acc),
+        _ => dispatch_mul_add(src, a, acc, m_vec_limbs),
+    }
+}
+
 /// Multiply-accumulate for variable-length vectors (used in echelon form).
 #[inline]
 pub(crate) fn vec_mul_add_u64(legs: usize, src: &[u64], a: u8, acc: &mut [u64]) {
-    let src = &src[..legs];
-    let acc = &mut acc[..legs];
-    dispatch_mul_add(src, a, acc, legs);
+    m_vec_mul_add(src, a, acc, legs);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -568,6 +636,59 @@ fn bins_mul_add_x(bins: &mut [u64], src: usize, dst: usize, n: usize) {
 /// `bins` must have at least `16 * m_vec_limbs` elements.
 /// `out` must have at least `m_vec_limbs` elements.
 pub(crate) fn m_vec_multiply_bins(bins: &mut [u64], out: &mut [u64], m_vec_limbs: usize) {
+    // Same constant-length recovery as `m_vec_add`: MAYO always folds at a
+    // compile-time `M_VEC_LIMBS` ∈ {4,5,7,9}, so dispatch to a const-generic
+    // ladder whose shift/XOR steps unroll and auto-vectorize.
+    match m_vec_limbs {
+        4 => m_vec_multiply_bins_n::<4>(bins, out),
+        5 => m_vec_multiply_bins_n::<5>(bins, out),
+        7 => m_vec_multiply_bins_n::<7>(bins, out),
+        9 => m_vec_multiply_bins_n::<9>(bins, out),
+        _ => m_vec_multiply_bins_dyn(bins, out, m_vec_limbs),
+    }
+}
+
+/// `bins[dst..] ^= ((x ^ t) >> 1) ^ (t * 9)`, `t = x & LSB`, unrolled at const `N`.
+#[inline(always)]
+fn bins_mul_add_x_inv_n<const N: usize>(bins: &mut [u64], src: usize, dst: usize) {
+    for i in 0..N {
+        let t = bins[src + i] & MASK_LSB;
+        bins[dst + i] ^= ((bins[src + i] ^ t) >> 1) ^ (t.wrapping_mul(9));
+    }
+}
+
+/// `bins[dst..] ^= ((x ^ t) << 1) ^ ((t >> 3) * 3)`, `t = x & MSB`, unrolled at const `N`.
+#[inline(always)]
+fn bins_mul_add_x_n<const N: usize>(bins: &mut [u64], src: usize, dst: usize) {
+    for i in 0..N {
+        let t = bins[src + i] & MASK_MSB;
+        bins[dst + i] ^= ((bins[src + i] ^ t) << 1) ^ ((t >> 3).wrapping_mul(3));
+    }
+}
+
+/// Const-length bin-fold ladder — identical step sequence to the dynamic path.
+#[inline(always)]
+fn m_vec_multiply_bins_n<const N: usize>(bins: &mut [u64], out: &mut [u64]) {
+    bins_mul_add_x_inv_n::<N>(bins, 5 * N, 10 * N);
+    bins_mul_add_x_n::<N>(bins, 11 * N, 12 * N);
+    bins_mul_add_x_inv_n::<N>(bins, 10 * N, 7 * N);
+    bins_mul_add_x_n::<N>(bins, 12 * N, 6 * N);
+    bins_mul_add_x_inv_n::<N>(bins, 7 * N, 14 * N);
+    bins_mul_add_x_n::<N>(bins, 6 * N, 3 * N);
+    bins_mul_add_x_inv_n::<N>(bins, 14 * N, 15 * N);
+    bins_mul_add_x_n::<N>(bins, 3 * N, 8 * N);
+    bins_mul_add_x_inv_n::<N>(bins, 15 * N, 13 * N);
+    bins_mul_add_x_n::<N>(bins, 8 * N, 4 * N);
+    bins_mul_add_x_inv_n::<N>(bins, 13 * N, 9 * N);
+    bins_mul_add_x_n::<N>(bins, 4 * N, 2 * N);
+    bins_mul_add_x_inv_n::<N>(bins, 9 * N, N);
+    bins_mul_add_x_n::<N>(bins, 2 * N, N);
+
+    out[..N].copy_from_slice(&bins[N..2 * N]);
+}
+
+/// Dynamic-length bin-fold ladder (non-MAYO lengths).
+fn m_vec_multiply_bins_dyn(bins: &mut [u64], out: &mut [u64], m_vec_limbs: usize) {
     let mvl = m_vec_limbs;
 
     bins_mul_add_x_inv(bins, 5 * mvl, 10 * mvl, mvl);

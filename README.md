@@ -25,7 +25,12 @@ NOTE: MAYO-2 signature size increased from 186 B to 216 B as a result of the Rou
 
 ## Performance
 
-Benchmarked on Apple Silicon (aarch64) with `-C target-cpu=native`.
+Benchmarked with Criterion. Times are point estimates from local runs and will
+vary by CPU, compiler, and feature flags.
+
+### Apple Silicon (`aarch64`)
+
+Benchmarked with `-C target-cpu=native`.
 Use the compact key types for minimal memory and serialized storage. Use the
 expanded/context types when repeatedly signing or verifying with the same key.
 
@@ -39,6 +44,25 @@ expanded/context types when repeatedly signing or verifying with the same key.
 | Mayo2/verify | 101 µs | 41 µs | 38 µs |
 | Mayo3/verify | 431 µs | 276 µs | 257 µs |
 | Mayo5/verify | 763 µs | 460 µs | 441 µs |
+
+### Linux (`x86_64-unknown-linux-gnu`)
+
+Benchmarked with `rustc 1.95.0`.
+
+| Operation | Compact | Expanded | Context |
+|-----------|---------|----------|---------|
+| Mayo1/keygen | 78.8 µs | - | - |
+| Mayo2/keygen | 103 µs | - | - |
+| Mayo3/keygen | 220 µs | - | - |
+| Mayo5/keygen | 469 µs | - | - |
+| Mayo1/sign | 283 µs | 192 µs | - |
+| Mayo2/sign | 246 µs | 127 µs | - |
+| Mayo3/sign | 711 µs | 455 µs | - |
+| Mayo5/sign | 1.54 ms | 949 µs | - |
+| Mayo1/verify | 79.7 µs | 48.4 µs | 44.9 µs |
+| Mayo2/verify | 37.4 µs | 15.1 µs | 13.7 µs |
+| Mayo3/verify | 203 µs | 131 µs | 124 µs |
+| Mayo5/verify | 405 µs | 279 µs | 265 µs |
 
 Run your own benchmarks:
 
